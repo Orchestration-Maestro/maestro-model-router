@@ -248,6 +248,10 @@ fn detected() -> BTreeSet<String> {
 }
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "runs on Linux, where CI installs similarity-rs; duplication does not vary by platform"
+)]
 fn no_duplication_is_unaccounted_for() {
     let found = detected();
     let accepted: BTreeSet<&str> = ACCEPTED.iter().map(|(p, _)| *p).collect();
@@ -273,6 +277,10 @@ fn no_duplication_is_unaccounted_for() {
 /// An allowlist nobody prunes becomes a list of excuses for code that no longer
 /// exists, and the next real duplicate hides among them.
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "runs on Linux, where CI installs similarity-rs; duplication does not vary by platform"
+)]
 fn no_accepted_pair_has_gone_stale() {
     let found = detected();
     let stale: Vec<&str> = ACCEPTED
