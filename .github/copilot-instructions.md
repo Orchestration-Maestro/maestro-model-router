@@ -36,6 +36,7 @@ already here, so improve an explanation in place.
 ├── .github/                                                       # GitHub metadata, templates and workflows
 │   ├── assets/                                                    # Images and other assets
 │   │   ├── CREDITS.md                                             # Banner credits
+│   │   ├── how-it-works.svg                                       # A caller's OpenAI-compatible request goes through the router's route, admission and relay to the model's llama-server on a loopback port
 │   │   └── maestro-model-router.jpg                               # Maestro Model Router: load what's asked, free what's idle
 │   ├── workflows/                                                 # GitHub Actions workflows
 │   │   ├── ci.yml                                                 # CI: calls ci.yml, upload-coverage.yml, upload-sarif.yml

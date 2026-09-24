@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 512" width="1160" height="512" role="img" aria-labelledby="how-it-works-title how-it-works-desc">
+  <title id="how-it-works-title">How the model router serves a request</title>
+  <desc id="how-it-works-desc">A caller sends an OpenAI-compatible request to the router, on /v1 with the model in the body or on /models/&lt;id&gt;/v1. The router reads the request head, checks the key and the origin when they are set, and finds the catalog entry. Admission gives the request its model: a model that is not running must fit under the memory budget and in what the device has free, so the coldest idle on-demand model is unloaded to make room, or the request waits in line. The model's llama-server starts on a loopback port, and the relay copies the reply back to the caller byte for byte as it streams. Beside the requests, POST /reload reads the catalog again, the reaper unloads a model unused for longer than the idle window, and /metrics reports what admission holds. A model that is answering is never unloaded.</desc>
+
+  <defs>
+    <marker id="hiw-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#604427"/>
+    </marker>
+    <marker id="hiw-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#3f7d3f"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+  <!-- ============ zones (painted first) ============ -->
+  <rect x="24" y="80" width="176" height="136" rx="8" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.10)" stroke-width="0.8"/>
+  <rect x="48" y="84" width="64" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="80" y="93" fill="rgba(38,27,8,0.45)" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.14em">CALLERS</text>
+
+  <rect x="240" y="80" width="592" height="312" rx="8" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.10)" stroke-width="0.8"/>
+  <rect x="264" y="84" width="176" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="352" y="93" fill="rgba(38,27,8,0.45)" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.14em">MODEL-ROUTER · ONE PROCESS</text>
+
+  <rect x="880" y="72" width="256" height="352" rx="8" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.10)" stroke-width="0.8"/>
+  <rect x="920" y="76" width="176" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="1008" y="85" fill="rgba(38,27,8,0.45)" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.14em">LLAMA-SERVER · LOOPBACK PORTS</text>
+
+  <!-- ============ connectors (before boxes) ============ -->
+
+  <!-- 1. the caller's request reaches the router -->
+  <line x1="176" y1="156" x2="264" y2="156" stroke="#604427" stroke-width="1.2" marker-end="url(#hiw-arrow)"/>
+  <rect x="192" y="136" width="56" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="220" y="145" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">REQUEST</text>
+
+  <!-- 2. the head names a catalog entry -->
+  <line x1="392" y1="156" x2="464" y2="156" stroke="#604427" stroke-width="1.2" marker-end="url(#hiw-arrow)"/>
+  <rect x="404" y="136" width="48" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="428" y="145" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">ENTRY</text>
+
+  <!-- 3. admission holds the room the model needs -->
+  <line x1="600" y1="156" x2="672" y2="156" stroke="#604427" stroke-width="1.2" marker-end="url(#hiw-arrow)"/>
+  <rect x="608" y="136" width="56" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="636" y="145" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">ROOM HELD</text>
+
+  <!-- 4. the relay forwards to the child on its loopback port -->
+  <line x1="808" y1="192" x2="904" y2="192" stroke="#604427" stroke-width="1.2" marker-end="url(#hiw-arrow)"/>
+  <rect x="824" y="172" width="48" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="848" y="181" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">LOOPBACK</text>
+
+  <!-- 5. the reply goes back to the caller as it streams -->
+  <path d="M 740,112 V 72 Q 740,64 732,64 H 160 Q 152,64 152,72 V 112" fill="none" stroke="#3f7d3f" stroke-width="1.2" marker-end="url(#hiw-arrow-link)"/>
+  <rect x="404" y="58" width="84" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="446" y="67" fill="#3f7d3f" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">STREAMED REPLY</text>
+
+  <!-- 6. admission starts a model that is not running -->
+  <path d="M 560,208 V 368 Q 560,376 568,376 H 904" fill="none" stroke="#604427" stroke-width="1.2" marker-end="url(#hiw-arrow)"/>
+  <rect x="760" y="356" width="40" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="780" y="365" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">STARTS</text>
+
+  <!-- 7. admission unloads the coldest idle model to make room -->
+  <path d="M 584,208 V 280 Q 584,288 592,288 H 904" fill="none" stroke="#604427" stroke-width="1.2" marker-end="url(#hiw-arrow)"/>
+  <rect x="744" y="268" width="92" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="790" y="277" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">UNLOADS FOR ROOM</text>
+
+  <!-- 8. the reaper unloads a model that outlived the idle window -->
+  <line x1="728" y1="316" x2="904" y2="316" stroke="#604427" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#hiw-arrow)"/>
+  <rect x="744" y="322" width="96" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="792" y="331" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">UNLOADS WHEN IDLE</text>
+
+  <!-- 9. the catalog names the entries, read again on POST /reload -->
+  <line x1="324" y1="296" x2="324" y2="200" stroke="#604427" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#hiw-arrow)"/>
+  <rect x="332" y="242" width="48" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="356" y="251" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">ENTRIES</text>
+
+  <!-- 10. /metrics reads the state admission decides with -->
+  <line x1="492" y1="208" x2="492" y2="296" stroke="#604427" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#hiw-arrow)"/>
+  <rect x="436" y="242" width="48" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="460" y="251" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">STATE</text>
+
+  <!-- 11. blocked: nothing unloads a model while it answers -->
+  <path d="M 600,184 H 640 Q 648,184 648,192 V 224 Q 648,232 656,232 H 864" fill="none" stroke="#8c3a2b" stroke-width="1.2" stroke-dasharray="6,4"/>
+  <line x1="872" y1="220" x2="872" y2="244" stroke="#8c3a2b" stroke-width="3"/>
+  <rect x="700" y="212" width="112" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="756" y="221" fill="#8c3a2b" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.06em">NEVER WHILE ANSWERING</text>
+
+  <!-- ============ nodes ============ -->
+
+  <!-- the caller -->
+  <rect x="48" y="112" width="128" height="88" rx="6" fill="#f5f5f5"/>
+  <rect x="48" y="112" width="128" height="88" rx="6" fill="rgba(96,68,39,0.10)" stroke="#886c48" stroke-width="1"/>
+  <rect x="56" y="120" width="48" height="12" rx="2" fill="transparent" stroke="rgba(136,108,72,0.40)" stroke-width="0.8"/>
+  <text x="80" y="129" fill="#886c48" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">CALLER</text>
+  <text x="112" y="160" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">OpenAI client</text>
+  <text x="112" y="180" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">/v1 · /models/&lt;id&gt;/v1</text>
+
+  <!-- route -->
+  <rect x="264" y="112" width="128" height="88" rx="6" fill="#f5f5f5"/>
+  <rect x="264" y="112" width="128" height="88" rx="6" fill="#ffffff" stroke="#261b08" stroke-width="1"/>
+  <rect x="272" y="120" width="32" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.40)" stroke-width="0.8"/>
+  <text x="288" y="129" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">HEAD</text>
+  <text x="328" y="152" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">route</text>
+  <text x="328" y="172" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">key · origin</text>
+  <text x="328" y="188" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">model: path or body</text>
+
+  <!-- admission, the focal node -->
+  <rect x="464" y="104" width="136" height="104" rx="6" fill="#f5f5f5"/>
+  <rect x="464" y="104" width="136" height="104" rx="6" fill="rgba(140,58,43,0.08)" stroke="#8c3a2b" stroke-width="1.2"/>
+  <rect x="472" y="112" width="32" height="12" rx="2" fill="transparent" stroke="rgba(140,58,43,0.40)" stroke-width="0.8"/>
+  <text x="488" y="121" fill="#8c3a2b" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">GATE</text>
+  <text x="532" y="146" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">admission</text>
+  <text x="532" y="166" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">budget · device room</text>
+  <text x="532" y="180" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">evicts the coldest idle</text>
+  <text x="532" y="194" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">or waits in line</text>
+
+  <!-- relay -->
+  <rect x="672" y="112" width="136" height="88" rx="6" fill="#f5f5f5"/>
+  <rect x="672" y="112" width="136" height="88" rx="6" fill="rgba(38,27,8,0.05)" stroke="#604427" stroke-width="1"/>
+  <rect x="680" y="120" width="40" height="12" rx="2" fill="transparent" stroke="rgba(96,68,39,0.40)" stroke-width="0.8"/>
+  <text x="700" y="129" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">PROXY</text>
+  <text x="740" y="152" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">relay</text>
+  <text x="740" y="172" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">reply byte for byte</text>
+  <text x="740" y="188" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">streamed as it comes</text>
+
+  <!-- catalog, read at startup and on POST /reload -->
+  <rect x="264" y="296" width="120" height="56" rx="6" fill="#f5f5f5"/>
+  <rect x="264" y="296" width="120" height="56" rx="6" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+  <rect x="270" y="302" width="32" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.30)" stroke-width="0.8"/>
+  <text x="286" y="311" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">FILE</text>
+  <text x="324" y="330" fill="#261b08" font-size="11" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">catalog.toml</text>
+  <text x="324" y="344" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">POST /reload</text>
+
+  <!-- /metrics -->
+  <rect x="400" y="296" width="120" height="56" rx="6" fill="#f5f5f5"/>
+  <rect x="400" y="296" width="120" height="56" rx="6" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+  <rect x="406" y="302" width="24" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.30)" stroke-width="0.8"/>
+  <text x="418" y="311" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">GET</text>
+  <text x="460" y="330" fill="#261b08" font-size="11" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">/metrics</text>
+  <text x="460" y="344" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">Prometheus gauges</text>
+
+  <!-- reaper -->
+  <rect x="608" y="296" width="120" height="56" rx="6" fill="#f5f5f5"/>
+  <rect x="608" y="296" width="120" height="56" rx="6" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+  <rect x="614" y="302" width="48" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.30)" stroke-width="0.8"/>
+  <text x="638" y="311" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">THREAD</text>
+  <text x="668" y="330" fill="#261b08" font-size="11" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">reaper</text>
+  <text x="668" y="344" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">the idle window</text>
+
+  <!-- resident model -->
+  <rect x="904" y="96" width="208" height="64" rx="6" fill="#f5f5f5"/>
+  <rect x="904" y="96" width="208" height="64" rx="6" fill="#ffffff" stroke="#261b08" stroke-width="1"/>
+  <rect x="912" y="104" width="64" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.40)" stroke-width="0.8"/>
+  <text x="944" y="113" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">RESIDENT</text>
+  <text x="1008" y="136" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">resident model</text>
+  <text x="1008" y="152" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">loaded at start · never evicted</text>
+
+  <!-- answering model -->
+  <rect x="904" y="176" width="208" height="64" rx="6" fill="#f5f5f5"/>
+  <rect x="904" y="176" width="208" height="64" rx="6" fill="#ffffff" stroke="#261b08" stroke-width="1"/>
+  <rect x="912" y="184" width="72" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.40)" stroke-width="0.8"/>
+  <text x="948" y="193" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">ON-DEMAND</text>
+  <text x="1008" y="216" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">answering model</text>
+  <text x="1008" y="232" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">held by its reader</text>
+
+  <!-- idle model, the first to go -->
+  <rect x="904" y="264" width="208" height="64" rx="6" fill="#f5f5f5"/>
+  <rect x="904" y="264" width="208" height="64" rx="6" fill="rgba(38,27,8,0.02)" stroke="rgba(38,27,8,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+  <rect x="912" y="272" width="72" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.30)" stroke-width="0.8"/>
+  <text x="948" y="281" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">ON-DEMAND</text>
+  <text x="1008" y="304" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">idle model</text>
+  <text x="1008" y="320" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">the first to be unloaded</text>
+
+  <!-- starting model -->
+  <rect x="904" y="344" width="208" height="64" rx="6" fill="#f5f5f5"/>
+  <rect x="904" y="344" width="208" height="64" rx="6" fill="#ffffff" stroke="#261b08" stroke-width="1"/>
+  <rect x="912" y="352" width="72" height="12" rx="2" fill="transparent" stroke="rgba(38,27,8,0.40)" stroke-width="0.8"/>
+  <text x="948" y="361" fill="#261b08" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle" letter-spacing="0.08em">ON-DEMAND</text>
+  <text x="1008" y="384" fill="#261b08" font-size="12" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle">starting model</text>
+  <text x="1008" y="400" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">ready within its startup budget</text>
+
+  <!-- ============ legend ============ -->
+  <line x1="24" y1="448" x2="1136" y2="448" stroke="rgba(38,27,8,0.12)" stroke-width="0.8"/>
+  <text x="24" y="472" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" letter-spacing="0.14em">LEGEND</text>
+
+  <line x1="112" y1="468" x2="144" y2="468" stroke="#604427" stroke-width="1.2"/>
+  <text x="152" y="472" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">REQUEST PATH</text>
+
+  <line x1="264" y1="468" x2="296" y2="468" stroke="#3f7d3f" stroke-width="1.2"/>
+  <text x="304" y="472" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">STREAMED REPLY</text>
+
+  <line x1="424" y1="468" x2="456" y2="468" stroke="#604427" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="464" y="472" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">BESIDE THE REQUESTS</text>
+
+  <line x1="616" y1="468" x2="648" y2="468" stroke="#8c3a2b" stroke-width="1.2" stroke-dasharray="6,4"/>
+  <line x1="652" y1="460" x2="652" y2="476" stroke="#8c3a2b" stroke-width="3"/>
+  <text x="664" y="472" fill="#604427" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">BLOCKED · A MODEL IS NEVER UNLOADED WHILE IT ANSWERS</text>
+</svg>
