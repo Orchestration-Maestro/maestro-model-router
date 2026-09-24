@@ -128,45 +128,6 @@ fn check_says_when_the_catalog_cannot_be_read() {
     );
 }
 
-#[test]
-fn launch_and_bench_name_a_model_the_catalog_does_not_carry() {
-    let root = ModelsRoot::with(&[MODEL]);
-    let catalog = written(&root, &catalog_text(""));
-
-    for (command, refusal) in [
-        ("launch", "carries no model called 'nowhere'"),
-        ("bench", "no entry called 'nowhere'"),
-    ] {
-        let output = model_router(&[command, &catalog, "nowhere"], root.path());
-        assert!(
-            !output.status.success(),
-            "{command}: an unknown model fails"
-        );
-        assert!(
-            text(&output.stderr).contains(refusal),
-            "{command}: {}",
-            text(&output.stderr)
-        );
-    }
-}
-
-#[test]
-fn serve_refuses_an_address_that_is_not_one() {
-    let root = ModelsRoot::with(&[MODEL]);
-    let catalog = written(&root, &catalog_text(""));
-
-    let output = model_router(&["serve", &catalog, "not-an-address"], root.path());
-    assert!(
-        !output.status.success(),
-        "a bad address fails before binding"
-    );
-    assert!(
-        text(&output.stderr).contains("'not-an-address' is not an address to bind"),
-        "{}",
-        text(&output.stderr)
-    );
-}
-
 #[cfg(unix)]
 mod with_the_stub {
     use super::*;
@@ -204,6 +165,47 @@ mod with_the_stub {
             .env_remove("MAESTRO_MEMORY_BUDGET_MIB")
             .output()
             .expect("the router binary is built by cargo test")
+    }
+
+    // `serve` and `bench` find the server binary before they read an address
+    // or a model name, so these run where one is found: the stub.
+    #[test]
+    fn launch_and_bench_name_a_model_the_catalog_does_not_carry() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+
+        for (command, refusal) in [
+            ("launch", "carries no model called 'nowhere'"),
+            ("bench", "no entry called 'nowhere'"),
+        ] {
+            let output = with_stub(&[command, &catalog, "nowhere"], &root);
+            assert!(
+                !output.status.success(),
+                "{command}: an unknown model fails"
+            );
+            assert!(
+                text(&output.stderr).contains(refusal),
+                "{command}: {}",
+                text(&output.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn serve_refuses_an_address_that_is_not_one() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+
+        let output = with_stub(&["serve", &catalog, "not-an-address"], &root);
+        assert!(
+            !output.status.success(),
+            "a bad address fails before binding"
+        );
+        assert!(
+            text(&output.stderr).contains("'not-an-address' is not an address to bind"),
+            "{}",
+            text(&output.stderr)
+        );
     }
 
     #[test]
