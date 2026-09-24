@@ -47,15 +47,59 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model": "gemma3", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
+## 🎯 Objectives
+
+Give every local model one OpenAI-compatible endpoint, so a caller names a
+model and never manages a server: the router loads what a request asks for,
+keeps the resident models warm, and frees what sits idle. It runs on Linux,
+macOS and Windows under the organization's gates. No tracked file names a
+machine; the models root, the server binary and the memory budget are read
+where the router runs.
+
+## 🔄 How it works
+
+<p align="center">
+  <img src=".github/assets/how-it-works.svg" alt="A caller's OpenAI-compatible request goes through the router's route, admission and relay to the model's llama-server on a loopback port, and the reply streams back as it is generated. Admission fits a model that is not running under the memory budget and in what the device has free, unloading the coldest idle on-demand model or waiting in line for room; a model that is answering is never unloaded. Beside the requests, the catalog is read again on POST /reload, the reaper unloads a model unused for longer than the idle window, and /metrics reports what admission holds." width="100%" />
+</p>
+
+1. A caller sends an OpenAI-compatible request to an address the router
+   listens on: to `/v1`, where the body names the model, or to
+   `/models/<id>/v1`, where the path does.
+2. The router reads the request head. With `MAESTRO_API_KEY` or
+   `MAESTRO_ALLOWED_ORIGINS` set, it checks the key and the origin, then finds
+   the catalog entry. A refusal, here or at admission, comes before anything is
+   forwarded, in the error envelope an OpenAI client already parses.
+3. Admission gives the request its model. A model already running takes it.
+   One that is not running must fit twice: under the memory budget, which
+   counts each model at its catalog estimate until it has been measured, and in
+   what the device has free right now. To make room, admission unloads the
+   coldest idle on-demand model, never one that is answering. When a busy model
+   holds the only room, the request waits in line, a minute by default, and is
+   refused with `503` if the room is still held then.
+4. The model's `llama-server` starts on a loopback port and must answer within
+   its startup budget. Resident models start with the router and are never
+   evicted.
+5. The relay forwards the request and copies the reply back byte for byte, so
+   a stream reaches the caller as it is generated. A caller that hangs up
+   releases its model at once.
+6. Beside the requests, the reaper unloads an on-demand model unused for
+   longer than the idle window, `POST /reload` reads an edited catalog without
+   stopping anything, and `GET /metrics` reports what admission holds. A
+   signalled router stops every child before it exits.
+
 ## 📍 Status
 
-This is the fifth slice. The router reads and validates a catalog, takes one
-entry from it as far as a running `llama-server` on a loopback port, and serves
-both a dedicated endpoint per model and a generic endpoint that routes by the
-model a request body names, relaying a streamed reply to the caller as it
-arrives. It holds models within a configured memory budget, unloading an idle
-one to make room for another, and holds the resident entries loaded from the
-moment it starts serving.
+The six slices of the
+[design](docs/superpowers/specs/2026-09-03-model-router-design.md#vertical-slices)
+have shipped: the catalog, a supervised `llama-server`, the dedicated
+endpoint, the generic endpoint with eviction, residency, and tests on Linux,
+macOS and Windows under the organization's CI
+([ADR 0002](docs/adr/0002-maestro-model-router-in-orchestration-maestro.md)).
+Since then the router unloads a model left idle, waits in line for room rather
+than refusing at once, bounds what one caller can hold, takes a key and a list
+of browser origins, reloads its catalog, loads and unloads on request, and
+reports at `/metrics`. What it leaves open is listed under
+[what eviction never does](#what-eviction-does-and-what-it-never-does).
 
 ## ✅ Checking a catalog
 
@@ -155,15 +199,15 @@ cost is what the budget counts from then on. Both are under
 | otherwise, or `0` | no window, so nothing is ever unloaded for sitting idle |
 
 A budget is a ceiling on what may be held at once; this is independent of it,
-and answers a different question -- how long unused memory may be held. A
+and answers a different question: how long unused memory may be held. A
 machine with no budget still wants its memory back: an on-demand model nothing
 has asked for in longer than the window is unloaded, its endpoint stays up,
 and the next request for it loads it again. A resident is never a candidate,
 whatever the window.
 
 A model is held for **at most one and a half windows plus one sweep**,
-measured from when a request last *finished* rather than when it started --
-otherwise a generation longer than the window would be unloaded the instant it
+measured from when a request last *finished* rather than when it started.
+Otherwise a generation longer than the window would be unloaded the instant it
 ended. This is measured with a monotonic clock, so it does not advance while
 the machine is suspended: a laptop that sleeps for eight hours wakes holding
 whatever it was holding when it slept.
@@ -191,10 +235,10 @@ names one machine.
 
 A caller that sends none of its request, or reads none of its answer, for a
 minute is let go: an idle connection is answered `408`, and one that stopped
-reading releases the model it was holding -- the router watches for a caller
-that leaves, and this is the one that stays and does nothing. At most 256
-connections are answered at once; more wait in the operating system's backlog
-until one ends.
+reading releases the model it was holding. The router watches for a caller
+that leaves, and this rule covers the one that stays and does nothing. At most
+256 connections are answered at once; more wait in the operating system's
+backlog until one ends.
 
 ### Who may use it
 
@@ -240,8 +284,8 @@ refused with its last lines.
 The reservation line is there because a resident is memory the router promises
 never to reclaim. A ceiling that covers the residents but not the largest model
 beside them refuses that model permanently, so the budget has to cover the
-resident **plus** the largest entry expected to run next to it -- and an
-operator who learns that from a refusal under load learns it too late.
+resident **plus** the largest entry expected to run next to it. An operator
+who learns that from a refusal under load learns it too late.
 
 Residents load on a thread of their own, so the router answers while they load
 rather than going silent until they finish. One that cannot load names itself
@@ -278,7 +322,7 @@ card, each counting only its own half.
 
 The paths are the same on every address, which is why they are printed once.
 
-Each address names an interface. A wildcard -- `0.0.0.0` or `::` -- is
+Each address names an interface. A wildcard, `0.0.0.0` or `::`, is
 refused: it means every interface the machine has now and every one it gains
 later, which is a reach nothing stated, and blanket-serving a network is the
 security design this repository has not written. Naming `192.168.140.1` says
@@ -286,9 +330,10 @@ which network, and whether anything can reach it is then a matter of routes
 and firewall rules rather than of what this router assumed.
 
 Giving the lab-facing address its own port is a convention rather than a
-requirement -- different addresses do not collide on the same port -- but a
-distinct port tells an operator reading `ss -tlnp`, a log line or a firewall
-rule which surface a request arrived on without having to read the address.
+requirement, since different addresses do not collide on the same port. A
+distinct port still tells an operator reading `ss -tlnp`, a log line or a
+firewall rule which surface a request arrived on without having to read the
+address.
 
 ### Reloading the catalog
 
@@ -378,10 +423,10 @@ catalog's entries without starting anything. `HEAD /v1/models` answers with
 the listing's headers and no body, and a query string on the listing is still
 the listing, because a client library that pages its model list adds one.
 
-Only `GET` and `POST` reach a child. A preflight (`OPTIONS`) is answered by
-the router itself -- `204`, an `Allow` header, and permissive
-`Access-Control-Allow-*` headers, which are safe for the loopback address and
-as safe as the network is for any other -- and never starts a model. With
+Only `GET` and `POST` reach a child. The router answers a preflight
+(`OPTIONS`) itself and never starts a model for one: `204`, an `Allow` header,
+and permissive `Access-Control-Allow-*` headers, which are safe for the
+loopback address and as safe as the network is for any other. With
 `MAESTRO_ALLOWED_ORIGINS` set, a preflight from an origin not on the list is
 refused with `403` instead. Any other method under a model
 prefix is refused with `405` before a child is involved, because the only
@@ -401,17 +446,17 @@ With a budget set, a model that does not fit causes the coldest idle on-demand
 model to be unloaded first. Two questions are asked before a model is started,
 and both have to say yes. The budget is a ceiling on what the loaded models
 cost, where each costs its catalog estimate until it has been measured and the
-larger of the two afterwards -- so a model that turns out to hold four times
-its estimate is counted at what it holds from the moment that is known, and
-the operator reads it on the line the load prints:
+larger of the two afterwards. A model that turns out to hold four times its
+estimate is counted at what it holds from the moment that is known, and the
+operator reads it on the line the load prints:
 
 ```text
 qwen3-06b: loading, estimated at 1024 MiB
 qwen3-06b: ready in 5.4 s, measured 4.5 GiB resident and 0.7 GiB on the device (catalog said 1024 MiB)
 ```
 
-Where the driver reports nothing per process -- WSL's does not -- the device
-figure is how far the device's free memory fell while the model loaded. Loads
+Where the driver reports nothing per process, as on WSL, the device figure is
+how far the device's free memory fell while the model loaded. Loads
 are admitted one at a time, so nothing else the router starts moves it
 meanwhile; anything else on the machine that allocates at that moment is
 counted too, which errs toward counting a model high.
@@ -420,15 +465,14 @@ The device is the second question, asked at the moment of the decision for
 what it has free right now. That counts everything on the machine, not only
 what this router loaded, so a desktop that grew since the budget was set is
 room the ledger still believes in and the device no longer has. The device can
-ask for more to be unloaded than the budget would, and refuses -- naming what
-was needed against what was free -- when unloading every idle model would
-still not make the room. A model whose flags keep every layer off the device
-is not held to the device's room, which is the one flag this router reads
-rather than passes through: the resident entry in the shipped catalog lives on
-the processor beside a large model that fills the device, and holding it to
-the device's room would refuse the arrangement it was measured in. Where the
-machine cannot be asked, the device question is not asked, and the budget
-decides alone.
+ask for more to be unloaded than the budget would. When unloading every idle
+model would still not make the room, it refuses, naming what was needed
+against what was free. A model whose flags keep every layer off the device is
+not held to the device's room; that is the one flag this router reads rather
+than passes through. Such a model keeps its weights and its cache in host
+memory, so holding it to the device's room would refuse it for memory it does
+not use. Where the machine cannot be asked, the device question is not asked,
+and the budget decides alone.
 
 What neither question prevents is a model that costs more than both its
 estimate and the room the device reported, in the seconds between the decision
@@ -447,21 +491,21 @@ A model is never unloaded while something is reading from it. Killing a child
 mid-answer would truncate the stream, which a caller cannot tell apart from a
 model that finished early. When the only model that could be unloaded is busy,
 the request waits for it as long as `MAESTRO_ADMISSION_WAIT_SECONDS` allows,
-and is refused if the room is still held then. That is checked at the moment a model is taken
-out, not only when the decision is made: a request can arrive in between, and
-emptying the slot then would leave a process running that the budget no longer
-counts.
+and is refused if the room is still held then. That is checked at the moment a
+model is taken out, not only when the decision is made: a request can arrive in
+between, and emptying the slot then would leave a process running that the
+budget no longer counts.
 
 Nothing is unloaded for a start that could not have happened anyway. A model
 file the models root does not carry is found before the decision, so a stale
 path does not cost the operator a warm model as well as the one they asked
-for. A start that fails only by being attempted -- a startup budget expiring,
-a model costing more than its estimate -- cannot be prevented this way, and
-the room is already gone when it does.
+for. A start that fails only by being attempted, such as a startup budget
+expiring or a model costing more than its estimate, cannot be prevented this
+way, and the room is already gone when it does.
 
 **A signalled router stops its children before it goes.** `serve` runs until
-the process is asked to end, and that end is a signal: `SIGTERM` -- what
-`systemctl stop`, `kill` and a container stop all send -- as well as `SIGINT`
+the process is asked to end, and that end is a signal: `SIGTERM`, which
+`systemctl stop`, `kill` and a container stop all send, as well as `SIGINT`
 and `SIGHUP` on Unix, and Ctrl-C, Ctrl-Break or a closing console on Windows.
 On any of them the router ends every `llama-server` it started, says how many
 it ended, and exits zero:
@@ -477,7 +521,7 @@ would queue behind the first, and nothing short of `SIGKILL` could end the
 router.
 
 Two ends this cannot cover, and nothing inside a process can. Being killed
-outright -- `SIGKILL`, `taskkill /F`, an out-of-memory kill -- reaches no
+outright (`SIGKILL`, `taskkill /F`, an out-of-memory kill) reaches no
 handler, so the children stay, and keep their memory. And a child that is
 mid-answer when the signal arrives is held by that answer rather than by the
 router: the router's claim on it is released, but the process exits before
@@ -500,8 +544,8 @@ slice inherits them rather than discovering them:
   moved from the listener to the first load rather than going away.
 - A decision naming two entries takes them in turn and stops at the first that
   gained a reader, so an operator can lose a warm model *and* still be refused.
-  The budget is never overcommitted by this -- the router ends under-loaded
-  rather than over -- which is what makes it a cost rather than a defect.
+  The budget is never overcommitted by this: the router ends under-loaded
+  rather than over, which is what makes it a cost rather than a defect.
 - The tests read "this child stopped" from its port going quiet. Nothing stops
   a later child binding that same ephemeral port, which would fail while
   blaming the invariant rather than the coincidence.
@@ -510,7 +554,7 @@ slice inherits them rather than discovering them:
   with it every admission.
 
 **A stream is passed through as it arrives.** The router has no HTTP
-dependency: it reads the request head -- the request line and the headers --
+dependency: it reads the request head (the request line and the headers),
 rewrites it, and copies the response back without interpreting a byte of it. A
 proxy that re-frames a response is a proxy that can buffer it; one that copies
 bytes cannot, which makes token-by-token delivery a property of the design
@@ -519,8 +563,9 @@ the generic endpoint: the model is inside the body, so the body is read. What
 is forwarded is still the caller's own bytes.
 
 A caller that hangs up closes the connection to the child, which is how
-`llama-server` is told to stop generating -- mid-answer, and while the model is
-still silent: reading a long prompt, or finishing a reply it does not stream.
+`llama-server` is told to stop generating. That works mid-answer, and also
+while the model is still silent: reading a long prompt, or finishing a reply
+it does not stream.
 The router watches the caller as well as the child, so a caller that gives up
 releases the model at once rather than when it next speaks. On Windows, where a
 shutdown does not wake a blocked read, it is released once the child closes the
@@ -564,36 +609,51 @@ those and never on prose; the `message` is for the reader and may be reworded.
 Once a response has begun there is no status left to send, so a failure after
 that point closes the connection rather than pretending it can still answer.
 
-## 📚 Documents
-
-- [Model router design](docs/superpowers/specs/2026-09-03-model-router-design.md)
-  -- the architecture, the catalog, and the six slices it ships in.
-- [Bootstrap and catalog plan](docs/superpowers/plans/2026-09-03-bootstrap-and-catalog.md)
-  -- this bootstrap, and the first slice.
-- [Process supervision plan](docs/superpowers/plans/2026-09-03-process-supervision.md)
-  -- the second slice.
-- [Dedicated endpoint proxy plan](docs/superpowers/plans/2026-09-03-dedicated-endpoint-proxy.md)
-  -- the third slice, and the measurement behind its one hard decision.
-- [Generic endpoint and eviction plan](docs/superpowers/plans/2026-09-03-generic-endpoint-and-eviction.md)
-  -- the fourth slice, and the five design problems it had to settle first.
-- [ADR 0001](docs/adr/0001-one-crate-until-a-seam-is-real.md) -- why this is
-  one crate.
-- [ADR 0002](docs/adr/0002-maestro-model-router-in-orchestration-maestro.md)
-  -- the move to Orchestration-Maestro, the new name, and the standards it
-  brought.
-- [Northstar](docs/standards/northstar.md),
-  [engineering](docs/standards/engineering.md) and
-  [security](docs/standards/security.md) -- how the organization's golden
-  rules hold in this repository.
-- [AGENTS.md](AGENTS.md) -- how to work in this repository.
-- [Banner credits](.github/assets/CREDITS.md) -- how the banner artwork was
-  made.
-
 ## 🛠️ Local commands
 
 ```sh
 just install    # the toolchain and the gate tools
 just setup      # wire the local hooks
 just check      # the quality commands rust-workflows runs in CI, run here
+just serving    # what the router is holding, before interrupting it
 just deploy     # build HEAD, install it, restart once nothing is in flight
 ```
+
+`just` alone lists every recipe, with what it does.
+
+## 📚 Documentation
+
+- [Model router design](docs/superpowers/specs/2026-09-03-model-router-design.md):
+  the purpose, the architecture, the catalog and the six slices it ships in
+- Implementation plans:
+  - [Bootstrap and catalog](docs/superpowers/plans/2026-09-03-bootstrap-and-catalog.md):
+    the bootstrap and the first slice
+  - [Process supervision](docs/superpowers/plans/2026-09-03-process-supervision.md):
+    the second slice
+  - [Dedicated endpoint proxy](docs/superpowers/plans/2026-09-03-dedicated-endpoint-proxy.md):
+    the third slice, and the measurement behind its one hard decision
+  - [Generic endpoint and eviction](docs/superpowers/plans/2026-09-03-generic-endpoint-and-eviction.md):
+    the fourth slice, and the five design problems it had to settle first
+  - [Residency](docs/superpowers/plans/2026-09-03-residency.md): the fifth
+    slice
+  - [Idle unload](docs/superpowers/plans/2026-09-04-idle-unload.md): the idle
+    window and the reaper
+  - [Estimates for entries that never touch the device](docs/superpowers/plans/2026-09-13-processor-pinned-estimates.md):
+    what the estimate charges a model kept on the processor
+  - [The router-mode surface says what it serves](docs/superpowers/plans/2026-09-13-router-mode-declares-what-it-serves.md):
+    what a llama.cpp client in router mode reads from `/models`
+  - [The small Qwens go to the device, and the retrieval pair get a rate](docs/superpowers/plans/2026-09-13-small-qwens-on-the-device.md):
+    why `qwen3-4b` and `qwen3-06b` left the processor
+- [ADR 0001](docs/adr/0001-one-crate-until-a-seam-is-real.md): why this is one
+  crate
+- [ADR 0002](docs/adr/0002-maestro-model-router-in-orchestration-maestro.md):
+  the move to Orchestration-Maestro, the new name, and the standards it brought
+- [Northstar](docs/standards/northstar.md),
+  [engineering rules](docs/standards/engineering.md) and
+  [security rules](docs/standards/security.md): how the organization's golden
+  rules hold in this repository
+- [Domain glossary](CONTEXT.md): what each name in the router means
+- [Changelog](CHANGELOG.md): what each pull request changed
+- [Agent instructions](AGENTS.md): how to work in this repository
+- [Banner credits](.github/assets/CREDITS.md): how the banner artwork was made
+- [LICENSE](LICENSE): MIT
