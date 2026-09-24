@@ -16,18 +16,23 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::admission::Budget;
 use crate::catalog::{Catalog, Entry};
-use crate::launch::{Child, Failure, Server};
+use crate::launch::{Failure, Server};
 use crate::queue::Wait;
 
 use super::loaded::{Slot, Take, live_child, take_if_idle};
 
+mod lease;
 mod room;
 mod start;
 mod sweep;
 mod table;
 mod view;
 
+pub(in crate::proxy) use lease::Lease;
+pub(in crate::proxy) use room::Queue;
 pub(in crate::proxy) use start::say;
+
+use lease::Freed;
 
 /// Every entry's slot, and the budget they compete for.
 pub(super) struct Slots {
@@ -42,16 +47,20 @@ pub(super) struct Slots {
     /// loading. Only `resync` takes the write lock, and only to add and drop
     /// keys.
     by_id: RwLock<HashMap<String, Arc<Slot>>>,
-    /// Serialises starting children, and nothing else.
+    /// Serialises starting children, and keeps the line of requests waiting
+    /// for room.
     ///
     /// Two loads at once compete for the same memory, so admitting one at a
     /// time is the correct behaviour rather than a limitation: a decision made
     /// while another load is in flight is a decision about a machine state
-    /// that no longer holds.
+    /// that no longer holds. Waiting for room is not loading, and is done with
+    /// this let go -- see `room`.
     ///
     /// Taken before any slot lock and never held across a relay, which is the
     /// whole deadlock argument: one lock order, so no cycle.
-    admission: Mutex<()>,
+    admission: Mutex<Queue>,
+    /// Rung whenever a model may have stopped being busy.
+    freed: Freed,
     budget: Budget,
     wait: Wait,
 }
@@ -67,7 +76,8 @@ impl Slots {
                     .map(|entry| (entry.id.clone(), Arc::new(Mutex::new(None))))
                     .collect(),
             ),
-            admission: Mutex::new(()),
+            admission: Mutex::new(Queue::default()),
+            freed: Freed::new(),
             budget,
             wait,
         }
@@ -85,7 +95,7 @@ impl Slots {
         entry: &Entry,
         server: &Server,
         root: &Path,
-    ) -> Result<Arc<Child>, Failure> {
+    ) -> Result<Lease<'_>, Failure> {
         if let Some(child) = self.running(entry) {
             return Ok(child);
         }
@@ -111,48 +121,32 @@ impl Slots {
     ///
     /// The fast path, and the common one. No admission lock is taken, so a
     /// request for a loaded model waits on nothing but its own slot.
-    fn running(&self, entry: &Entry) -> Option<Arc<Child>> {
-        live_child(&self.slot(&entry.id))
+    fn running(&self, entry: &Entry) -> Option<Lease<'_>> {
+        live_child(&self.slot(&entry.id)).map(|child| Lease::new(child, &self.freed))
     }
 
     /// Starts a child for this entry, unloading what has to go first.
     ///
-    /// The slow path. The admission lock is taken for the whole decision, so
-    /// two requests cannot each read a machine state the other is about to
-    /// change, and released before anything is relayed.
+    /// The slow path. The admission lock is held for each decision and for
+    /// the load, so two requests cannot each read a machine state the other
+    /// is about to change, and let go while this waits for room. Whether the
+    /// entry was started meanwhile is asked again under it, by `room_for`,
+    /// because another request may have started this very entry.
     fn admit(
         &self,
         catalog: &Catalog,
         entry: &Entry,
         server: &Server,
         root: &Path,
-    ) -> Result<Arc<Child>, Failure> {
-        let _admitting = self
+    ) -> Result<Lease<'_>, Failure> {
+        let admitting = self
             .admission
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-
-        // Checked again under the admission lock, because another request may
-        // have started this very entry while this one waited for the lock.
-        if let Some(child) = self.running(entry) {
+        let (_admitting, found) = self.room_for(admitting, catalog, entry, root);
+        if let Some(child) = found? {
             return Ok(child);
         }
-
-        // Before the decision, because the decision ends processes and this
-        // does not. A stale path, an unmounted root or a half-finished
-        // download would otherwise unload the operator's warm model and then
-        // answer 502, leaving them with neither. What cannot be prevented here
-        // is a start that fails later -- a timeout, or a model that costs more
-        // than its estimate -- because those are only knowable by trying.
-        Server::model_file(entry, root)?;
-
-        // Room is made here rather than decided here: when what holds it is
-        // busy rather than resident, this waits for it. The admission lock is
-        // held throughout, which is what makes waiting correct rather than
-        // merely patient -- a second request that would compete for the same
-        // memory queues behind this one instead of racing it to the same
-        // conclusion.
-        self.make_room(catalog, entry)?;
 
         let loaded = self.start(entry, server, root)?;
         // The handed-out handle and the slot's own come into existence
@@ -164,7 +158,7 @@ impl Slots {
         let mut slot = handle.lock().unwrap_or_else(PoisonError::into_inner);
         let child = Arc::clone(&loaded.child);
         *slot = Some(loaded);
-        Ok(child)
+        Ok(Lease::new(child, &self.freed))
     }
 
     /// Unloads the named entries, or names the one that stopped it.
