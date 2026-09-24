@@ -12,10 +12,10 @@ for where it is going, and `docs/adr/` for what has already been decided. A
 decision recorded there was made with reasons. Reopen it with new evidence,
 not with a preference.
 
-The organization's standards bind here too: the
-[engineering](https://github.com/Orchestration-Maestro/rust-workflows/blob/main/docs/standards/engineering.md)
-and [security](https://github.com/Orchestration-Maestro/rust-workflows/blob/main/docs/standards/security.md)
-standards of `rust-workflows`, whose CI every pull request passes.
+The organization's golden rules bind here too. This repository's map of them
+says what holds each one here: [engineering](docs/standards/engineering.md),
+[security](docs/standards/security.md) and the
+[Northstar](docs/standards/northstar.md), with one KPI per pillar.
 
 ## What this repository is
 
