@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # The organization merges only conventional titles: "ci(deps): bump ...".
+    commit-message:
+      prefix: ci
+      include: scope
+    # One pull request a week for patch and minor updates, which
+    # dependabot-auto-merge.yml queues; a major update keeps its own.
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # "build(deps): bump ...", a conventional title the organization accepts.
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      cargo:
+        patterns: ["*"]
+        update-types: [minor, patch]

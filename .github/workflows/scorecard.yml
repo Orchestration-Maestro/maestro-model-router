@@ -1,0 +1,41 @@
+name: OpenSSF Scorecard
+# Scores this repository's supply-chain practices, publishes the result for the
+# README badge and shows the findings in code scanning. The Scorecard API
+# rejects a run whose workflow has workflow-level env, defaults or write scopes,
+# or whose scoring job runs anything but the approved actions.
+"on":
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: scorecard
+  cancel-in-progress: false
+jobs:
+  analysis:
+    name: Score the repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write  # upload the findings to code scanning
+      id-token: write  # sign the published result for the Scorecard API
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Score the repository
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc  # v2.4.4
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: true
+      - name: Upload the findings
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd  # v4.38.1
+        with:
+          sarif_file: scorecard.sarif
+          category: scorecard
