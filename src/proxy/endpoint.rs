@@ -31,6 +31,9 @@ const CATALOGUE: &str = "/models";
 /// The path a llama.cpp client reads the server's own settings from.
 const PROPERTIES: &str = "/props";
 
+/// The path Prometheus scrapes.
+const METRICS: &str = "/metrics";
+
 /// The path that makes the router read its catalog file again.
 ///
 /// The router's own, not llama.cpp's: no client asks for this, an operator
@@ -60,6 +63,8 @@ pub(super) enum Endpoint {
     /// `/props`: what the server itself does, which is how a client decides
     /// whether it is talking to a router at all.
     Properties,
+    /// `/metrics`: what the router holds, in the text format Prometheus reads.
+    Metrics,
     /// `/reload`: read the catalog file again and serve what it now says.
     Reload,
     /// `/models/load`: start the model the body names, if it is not running.
@@ -86,6 +91,9 @@ impl Endpoint {
         }
         if bare == PROPERTIES {
             return Ok(Self::Properties);
+        }
+        if bare == METRICS {
+            return Ok(Self::Metrics);
         }
         if bare == RELOAD {
             return Ok(Self::Reload);
@@ -141,10 +149,12 @@ impl Endpoint {
     /// then answers 404, which is a load nobody asked for.
     pub(super) fn allowed(&self) -> &'static str {
         match self {
-            // The three the router answers out of its own catalog. Nothing is
+            // The ones the router answers out of its own state. Nothing is
             // sent upstream and nothing is written, so they take the same
             // read-only set.
-            Self::Listing | Self::Catalogue | Self::Properties => "GET, HEAD, OPTIONS",
+            Self::Listing | Self::Catalogue | Self::Properties | Self::Metrics => {
+                "GET, HEAD, OPTIONS"
+            }
             Self::Dedicated { .. } | Self::Generic { .. } => "GET, POST, OPTIONS",
             // `POST` alone, and deliberately not `GET`: this one changes what
             // the router serves. A reader that fetched every path it found --
@@ -173,6 +183,7 @@ impl Endpoint {
             Self::Listing => LISTING,
             Self::Catalogue => CATALOGUE,
             Self::Properties => PROPERTIES,
+            Self::Metrics => METRICS,
             Self::Reload => RELOAD,
             Self::Load => LOAD,
             Self::Unload => UNLOAD,

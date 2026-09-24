@@ -18,7 +18,7 @@ mod own;
 use super::endpoint::Endpoint;
 use super::head::{Head, Length};
 use super::refusal::{Cause, Refusal};
-use super::{Shared, body, head, relay, reply};
+use super::{Shared, body, head, metrics, relay, reply};
 
 /// Answers one connection.
 pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
@@ -77,7 +77,7 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
     // or started on a child's behalf: saying what could be served is never a
     // reason to start serving it.
     //
-    // All three honour `HEAD` the same way, because a client sizing a buffer
+    // All of them honour `HEAD` the same way, because a client sizing a buffer
     // from the declared length is doing so for the same reason whichever of
     // them it asked.
     let head_only = request.method == "HEAD";
@@ -85,6 +85,7 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
         Endpoint::Listing => return reply::listing(stream, shared, head_only),
         Endpoint::Catalogue => return own::catalogue(stream, shared, head_only),
         Endpoint::Properties => return own::properties(stream, head_only),
+        Endpoint::Metrics => return metrics::answer(stream, shared, head_only),
         // Answered here with the rest of the router's own paths, and for the
         // same reason: no child is involved. It is the one of them that
         // changes something, which is why it is the one that takes `POST`.
@@ -181,6 +182,7 @@ fn framing(request: &Head) -> Result<(), Refusal> {
             Endpoint::Listing => "the model listing".to_owned(),
             Endpoint::Catalogue => "the catalogue".to_owned(),
             Endpoint::Properties => "the server's properties".to_owned(),
+            Endpoint::Metrics => "the metrics".to_owned(),
             Endpoint::Reload => "the reload".to_owned(),
             Endpoint::Load | Endpoint::Unload => "a load or an unload".to_owned(),
         };

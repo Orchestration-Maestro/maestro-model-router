@@ -294,6 +294,23 @@ refused as a request would be when there is none. An unload of a model that
 is answering a request is refused with `409` rather than cutting that caller
 off, and one of a model that is not running has nothing to do and succeeds.
 
+### Metrics
+
+`GET /metrics` answers in the text format Prometheus scrapes, and starts
+nothing:
+
+| Gauge | Labels | Value |
+| --- | --- | --- |
+| `model_router_model_loaded` | `model` | `1` while a child holds the entry, else `0` |
+| `model_router_model_declared_mib` | `model` | what the catalog estimates the entry holds |
+| `model_router_model_held_mib` | `model` | what a loaded entry was measured holding; absent when nothing was measured |
+| `model_router_requests_waiting` | | requests in line for room |
+| `model_router_memory_budget_mib` | | the budget; absent when there is none |
+| `model_router_build_info` | `version`, `commit` | `1`, naming the build that answers |
+
+Each is read from the state admission decides with, so a graph shows what the
+router believed it was holding when the machine ran short.
+
 ### Two ways to name a model
 
 Each model is reached at its own endpoint, so a request needs no model field to

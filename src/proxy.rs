@@ -70,6 +70,7 @@ mod endpoint;
 mod head;
 mod listen;
 mod loaded;
+mod metrics;
 mod reaper;
 mod refusal;
 mod relay;

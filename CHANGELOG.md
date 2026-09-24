@@ -42,5 +42,8 @@ records as the commit on `main`.
 - `POST /models/load` and `POST /models/unload`, in llama.cpp's router shape,
   load a model before anything asks it a question and give its memory back
   before its idle window ends. A model answering a request is not unloaded.
+- `GET /metrics` reports what is loaded, what each entry was estimated and
+  measured holding, the line waiting for room, the budget and the build, in
+  the text format Prometheus scrapes.
 
 Nothing released yet. The first tag will be `v0.1.0`.
