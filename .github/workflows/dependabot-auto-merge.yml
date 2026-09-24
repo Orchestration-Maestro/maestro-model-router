@@ -10,9 +10,13 @@ concurrency:
 jobs:
   auto-merge:
     name: Queue patch and minor updates to merge
-    # Dependabot's own pull requests only; the required checks still decide
-    # whether the queued merge happens.
-    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    # Dependabot's own pull requests, on runs Dependabot started: only those
+    # read Dependabot secrets. A person's push to Dependabot's branch starts a
+    # run without them, which could not mint the token; it is skipped. The
+    # author decides trust; the actor check only narrows it, so zizmor's
+    # bot-conditions concern, an actor check standing alone, does not apply.
+    # The required checks still decide whether the queued merge happens.
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}  # zizmor: ignore[bot-conditions] narrows the author check
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
