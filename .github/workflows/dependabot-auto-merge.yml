@@ -1,0 +1,53 @@
+name: Dependabot auto-merge
+"on":
+  pull_request:
+permissions:
+  contents: read
+# A newer push to the same pull request supersedes the run in flight.
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  auto-merge:
+    name: Queue patch and minor updates to merge
+    # Dependabot's own pull requests only; the required checks still decide
+    # whether the queued merge happens.
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # The organization's bot, not GITHUB_TOKEN: a merge by GITHUB_TOKEN
+      # triggers no workflow on main. A run Dependabot started reads only
+      # Dependabot secrets, which is where the organization keeps these two.
+      - name: Mint the bot token
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          # An action update edits workflow files.
+          permission-workflows: write
+      - name: Queue the merge unless an update is major
+        id: merge
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          # Dependabot records each update's type in its commit trailer; a
+          # grouped update is major when any of its members is.
+          bodies=$(gh pr view "$PR_URL" --json commits \
+            --jq '.commits[].messageBody')
+          if [[ $bodies != *"update-type: version-update:semver-"* ]]; then
+            echo "::notice::No update type recorded; a person merges this one."
+            exit 0
+          fi
+          if [[ $bodies == *"update-type: version-update:semver-major"* ]]; then
+            echo "::notice::A major update; a person reviews and merges it."
+            exit 0
+          fi
+          gh pr merge --auto --squash "$PR_URL"

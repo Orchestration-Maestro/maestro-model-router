@@ -1,0 +1,93 @@
+# The model router. One crate, one shipped binary, and a library target that
+# exists so the tests can link against the catalog types.
+#
+# One crate, not a workspace: a seam is only real when something varies across
+# it, and across all six slices of the design nothing does. Every slice ships
+# inside this binary and none introduces a second consumer of any module.
+# docs/adr/0001-one-crate-until-a-seam-is-real.md records the decision, the
+# condition under which it is reopened, and why the test target firing that
+# condition bought a library target rather than a second crate.
+
+[package]
+name = "maestro-model-router"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98.1"
+license = "MIT"
+description = "Router that supervises llama.cpp server processes and serves one endpoint per model"
+repository = "https://github.com/Orchestration-Maestro/maestro-model-router"
+# The second binary made `cargo run` ambiguous. This names the shipped one, so
+# the commands in README.md work as written.
+default-run = "model-router"
+
+# The interface the tests link against. It carries what those tests drive and
+# nothing more: the library seam exists for that one consumer, and widening it
+# would be a promise no caller has asked for.
+[lib]
+name = "maestro_model_router"
+path = "src/lib.rs"
+
+# The command keeps the name the service unit and every caller already use;
+# the package carries the organization's `maestro-` prefix, the binary does not.
+[[bin]]
+name = "model-router"
+path = "src/main.rs"
+
+# The second adapter at the supervision seam: a server that speaks the health
+# contract without a model behind it, so continuous integration supervises a
+# real process on every platform leg.
+#
+# Not behind a feature. The fast tier runs `cargo test --all-targets` without
+# `--all-features`, so a feature-gated stub would be skipped in continuous
+# integration while the run reported green -- the failure `tests/duplication.rs`
+# warns about in its own words. It is built by the tests, and it ships in the
+# CI payload beside the router, because rust-workflows builds every binary
+# target: harmless, since it serves no model.
+[[bin]]
+name = "stub-llama-server"
+path = "src/bin/stub_llama_server/main.rs"
+
+# A hand-written parser for a format with nested tables and optional fields is
+# more code than this one, and wrong in ways that surface at run time.
+#
+# Reading only: the catalog is never written, so `display` stays off. `serde`
+# is on because it gates the `Table` value type, not because anything here
+# derives: the catalog is walked by hand so each error can name the entry and
+# the field it came from, which a derived deserializer cannot do.
+# The request body must be interpreted correctly, and a hand-written scanner
+# is the risk rather than the saving: the key that routes is only findable by
+# something that tracks strings, escapes and depth, and getting it wrong sends
+# the request to the wrong model, which answers plausibly.
+[dependencies]
+# A child outlives the process that started it unless that process is told it
+# is ending, and a signal handler is the only way to be told. Written by hand
+# it is a different handler on every platform -- sigaction and a self-pipe on
+# Unix, SetConsoleCtrlHandler on Windows -- which is exactly the platform code
+# this repository resolves at run time rather than writes. The `termination`
+# feature is what makes it a stop rather than an interrupt: SIGTERM and SIGHUP
+# beside SIGINT, and Ctrl-Break and a closing console beside Ctrl-C.
+ctrlc = { version = "3.5", features = ["termination"] }
+serde_json = "1"
+toml = { version = "1.1", default-features = false, features = [
+    "parse",
+    "serde",
+] }
+
+# Measured, not assumed: the whole pedantic group costs two fixes on this
+# codebase. The lints that make it noisy elsewhere (must_use_candidate,
+# missing_errors_doc) fire on public library surface, which this crate now has
+# a little of -- so those lints do apply, and the catalog carries the
+# `#[must_use]` and `# Errors` notes they ask for. The surface is small enough
+# that this costs a line or two rather than an argument.
+# No `unsafe` in any target, the tests included: the organization's Rust rule,
+# which CI also enforces with `-D unsafe_code`. Forbid rather than deny, so no
+# `#[allow]` further down can quietly take it back.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+# Governance uses 5; clippy defaults to 7.
+too_many_arguments = "warn"

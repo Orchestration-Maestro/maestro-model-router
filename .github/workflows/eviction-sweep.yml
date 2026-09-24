@@ -1,0 +1,33 @@
+name: Eviction sweep
+# Every eviction case on every platform the router claims, weekly. Each pull
+# request runs a sample of the sweep through CI; the whole of it takes longer
+# than a pull request should wait, so it reports on a schedule instead.
+"on":
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: eviction-sweep
+  cancel-in-progress: false
+jobs:
+  sweep:
+    name: Full eviction sweep
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      MAESTRO_EVICTION_FULL_SWEEP: "1"
+    steps:
+      - name: Check out the revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run every eviction case
+        run: cargo test --locked --test eviction

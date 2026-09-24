@@ -1,0 +1,956 @@
+# The models this router serves.
+#
+# Every location is relative to a models root supplied at run time, so this
+# file describes a set of models without naming the machine they sit on.
+#
+# The flags tables carry llama-server settings verbatim. This router does not
+# interpret them, which is what keeps a change to that server's flag surface
+# an edit here rather than a change to the code.
+#
+# The flag spellings below were verified by hand against llama-server
+# 0.3.0-dev (build 1, commit 77f132c). That surface moves between releases, so
+# the claim is only true against a version and an unpinned one rots silently.
+#
+# The dedicated-endpoint relay was verified by hand against that same version:
+# a streamed reply arrived in 198 separate pieces spread over 554 milliseconds,
+# a reply carried the identifier its endpoint named rather than the disagreeing
+# one its request body asked for, and abandoning a stream freed the server's
+# slot within 38 milliseconds.
+#
+# The generic endpoint and eviction were verified by hand against that same
+# version, with MAESTRO_MEMORY_BUDGET_MIB=25000. Every step, so that one left
+# out is visible rather than implied:
+#
+#   startup             both endpoints and the budget line are printed
+#   GET /v1/models      lists all four entries, and starts no child
+#   completion          a request naming gemma3 was answered by gemma3
+#   streamed completion arrived in 96 pieces rather than one
+#   the swap            a request for qwen38 unloaded gemma3 and answered in
+#                       six seconds, then swapped back in one, with one child
+#                       running throughout
+#   parity, unmodified  two models in one session on :8080, reached by the
+#                       model entries the operator's agent already carries,
+#                       with no edit to them. This is the acceptance bar
+#   interrupt           a stream abandoned partway was followed by an answer
+#                       in 47 milliseconds, so the server had stopped
+#                       generating
+#   unknown model       404, listing what the catalog carries
+#   no model field      400, naming the endpoint that needs none
+#
+# The review fixes that followed were verified against the same version, with
+# a 2048 MiB budget so that any second model would need gemma3's room:
+#
+#   GET /v1/models      still starts no child
+#   completion          routed by the body, answered by gemma3
+#   missing model file  a request for qwen3-06b, whose file is genuinely not
+#                       there, was refused 502 naming the path -- and gemma3
+#                       kept the same process and went on answering. Before
+#                       the fix its room would have been taken for a start
+#                       that could never have happened. That entry is now
+#                       qwen3-4b and points at a file that is there, so the
+#                       case above is history rather than the current state
+#   GET /v1/models/x    411, naming the header it wanted
+#   bad Content-Length  400, quoting back what arrived
+#
+# Not re-run after those fixes, because each needs the 27B model and a budget
+# to match: the swap, the 96-piece stream, and the mid-stream interrupt. They
+# are recorded above as they were measured before the fixes, which touched
+# neither the relay nor the decision that orders a swap.
+#
+# Residency was verified by hand against that same version, on an RTX 5090
+# carrying 32607 MiB, with MAESTRO_MEMORY_BUDGET_MIB=30000. Every step:
+#
+#   startup             the resident loaded in 5.4 s before any request, and
+#                       the reservation line read "residents reserve 4096 MiB
+#                       of 30000 MiB, leaving 25904 MiB for everything else"
+#   no load delay       the resident answered in 0.31 s. gemma3, asked for the
+#                       first time, paid 1.29 s for its load -- which is the
+#                       difference the whole slice exists to buy
+#   beside the largest  qwen38 loaded next to the resident in 5.5 s and
+#                       answered, with two children serving at once, and the
+#                       resident still answering afterwards
+#   the ceiling refuses under 25000 MiB, qwen38 was refused 503 with "'qwen38'
+#                       needs 24576 MiB and the budget of 25000 MiB is held by:
+#                       qwen3-4b (4096 MiB, resident)"
+#   degraded startup    pointed at a file that is not there, the resident named
+#                       itself and its reason and the router served the rest of
+#                       the catalog without it
+#
+# The estimates are estimates, and this slice measured how far off one of them
+# is. The resident is written at 4096 MiB; on the video device it held about
+# 7565 MiB, which is why it is on the processor instead -- see the entry. An
+# entry that costs more than its figure is admitted and then fails to load,
+# which shows up as a start that names its entry rather than as a wrong
+# decision. That is exactly what qwen38 did before the resident was moved.
+
+version = 1
+
+# Settings every entry shares. An entry inherits what it does not set, and
+# overrides it by saying so.
+#
+# The startup budget is how long an entry may take to become ready before the
+# router gives up on it. It sits here rather than in the code because startup
+# time varies by two orders of magnitude across these entries, so an entry
+# that loads quickly can carry a tighter one of its own.
+[defaults]
+context_size = 32768
+residency = "on-demand"
+memory_estimate_mib = 4096
+startup_timeout_seconds = 300
+
+[defaults.flags]
+jinja = "true"
+n-gpu-layers = "999"
+fit = "on"
+fit-target = "1536"
+
+# The general-purpose model, with a speculative draft and a vision projector.
+[models.qwen38]
+path = "llm/qwen/qwen3.8-27b/Qwen3.8-27B-UD-Q6_K.gguf"
+draft_path = "llm/qwen/qwen3.8-27b/MTP/mtp-Qwen3.8-27B-Q4_0.gguf"
+projector_path = "llm/qwen/qwen3.8-27b/mmproj-F16.gguf"
+context_size = 131072
+# Measured 28867 MiB resident 2026-09-12 on an RTX 5090 (32,607 MiB), loaded
+# and generating. The margin over it is deliberately thin -- a twentieth put
+# this at 30464, above the 29347 MiB the router derives from the device, so
+# the entry was refused for room it plainly had. A 27B model at 131K context
+# nearly fills this card, and admission re-checks what the device actually
+# reports free, which is the backstop a thin margin leans on.
+memory_estimate_mib = 29184
+reasoning_format = "deepseek"
+
+[models.qwen38.flags]
+# Qwen's own recommended sampling for thinking mode, which llama-server does
+# not arrive at on its own: it ships top-k 40 and min-p 0.05 where Qwen asks
+# for 20 and 0, so every entry in this family had been sampling against its
+# publisher's advice by simply not saying anything.
+#
+# Temperature is the 0.6 Qwen names for precise coding rather than the 1.0 it
+# names for general work, because what reaches this estate is mostly code and
+# tool calls, and 0.6/0.7 is what the tool-calling advice says too. These are
+# only the defaults the server starts with -- a request carrying its own
+# temperature overrides them, which is how creative work should ask.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+
+# The same weights at a lower reasoning effort, for extraction work where the
+# thinking costs more than it returns.
+[models.qwen38-semantic]
+path = "llm/qwen/qwen3.8-27b/Qwen3.8-27B-UD-Q6_K.gguf"
+draft_path = "llm/qwen/qwen3.8-27b/MTP/mtp-Qwen3.8-27B-Q4_0.gguf"
+projector_path = "llm/qwen/qwen3.8-27b/mmproj-F16.gguf"
+context_size = 131072
+# Measured 28867 MiB resident 2026-09-12 on an RTX 5090 (32,607 MiB), loaded
+# and generating. The margin over it is deliberately thin -- a twentieth put
+# this at 30464, above the 29347 MiB the router derives from the device, so
+# the entry was refused for room it plainly had. A 27B model at 131K context
+# nearly fills this card, and admission re-checks what the device actually
+# reports free, which is the backstop a thin margin leans on.
+memory_estimate_mib = 29184
+reasoning_format = "deepseek"
+reasoning_effort = "low"
+
+[models.qwen38-semantic.flags]
+# Qwen's recommended sampling, as set out on qwen38.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+
+# A small model kept for cheap work that does not deserve the large one.
+#
+# The location is the download cache laid out by the tool that fetched it,
+# hash and all, rather than a tidier path someone would have to maintain by
+# hand. It is what `models.ini` points at today.
+[models.gemma3]
+path = ".cache/llama.cpp/models--ggml-org--gemma-3-1b-it-GGUF/snapshots/f9c28bcd85737ffc5aef028638d3341d49869c27/gemma-3-1b-it-Q4_K_M.gguf"
+# Measured 1553 MiB on the device, twice, by `model-router bench`. The 2560 it
+# shipped at was the estimator's figure from before it learned that this
+# architecture windows most of its layers, and nothing re-read it afterwards:
+# fixing a derivation does not correct a number already written down.
+memory_estimate_mib = 1792
+startup_timeout_seconds = 60
+
+[models.gemma3.flags]
+# Google's figures for Gemma 3, which are not Qwen's and not llama-server's:
+# a top-k of 64 where both of those sit at 20 and 40, and a temperature of 1.0
+# rather than something cautious. Gemma is sampled wide on purpose.
+temp = "1.0"
+top-k = "64"
+top-p = "0.95"
+min-p = "0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+# The last cache-keeping entry still on f16, and there was no reason for it
+# beyond never having been revisited. Gemma 3 windows five layers in six, so
+# the cache is small either way: this took the measurement from 1553 MiB to
+# 1486, which is 67 MiB and does not change what fits. It is set because
+# gemma4 runs the same architecture at q8_0 without complaint, and an estate
+# where one entry is costed on different rules from its neighbour is one where
+# the difference is an accident rather than a decision.
+#
+# The declared figure below is unchanged: a twentieth over 1486 is 1560, which
+# rounds up to the same quarter gibibyte it already sat at.
+ctk = "q8_0"
+ctv = "q8_0"
+
+# The resident entry. Held loaded so a caller that asks constantly never waits
+# for a load, which is the whole reason residency exists.
+#
+# The weights are 2382 MiB on disk and the estimate covers context on top of
+# them. It is stated rather than left to the defaults table even though the two
+# agree today: a resident's cost is load-bearing for every admission decision
+# the router will ever make, and a figure that has to be read out of a defaults
+# table to be known is a figure that will be got wrong.
+#
+# n-gpu-layers is overridden to 0, putting this on the processor rather than on
+# the video device with the large entries. Measured on an RTX 5090 with 32607
+# MiB, against llama-server 0.3.0-dev (build 1, commit 77f132c):
+#
+#   on the device   held about 7565 MiB of video memory, loaded in 2.7 s, and
+#                   answered in 0.13 s -- but left too little for qwen38, whose
+#                   server then exited while loading and answered 502
+#   on the processor held about 900 MiB of video memory, loaded in 6.7 s, and
+#                   answered in 0.47 s -- and qwen38 loaded beside it in 6.4 s,
+#                   with both children serving at once
+#
+# So the device is where this entry cannot go: it would make the general model
+# unservable on this machine, which is the opposite of what a resident is for.
+# The cost is a slower load and roughly a third of a second per answer, neither
+# of which the caller this entry exists for will notice.
+#
+# The estimate stays at 4096 MiB even though this now holds far less video
+# memory than that. The budget is one number for two kinds of memory, so an
+# estimate that reflected only the video side would let the router admit models
+# the machine cannot hold once system memory is counted. Pessimistic in the
+# safe direction, and recorded rather than tuned.
+[models.qwen3-4b]
+path = "llm/qwen/qwen3-4b/Qwen3-4B-Q4_K_M.gguf"
+# 40960, the whole of what these weights were trained to, rather than the
+# 32768 the defaults table would have handed it.
+context_size = 40960
+# On-demand, and now on the device with everything else.
+#
+# It was pinned to the processor, and the reason was real at the time: this
+# entry and its 0.6B rival were candidates for a *resident* steward, and a
+# resident reserves its estimate against the budget forever. On the card that
+# reservation was about 7.5 GiB, which refused every 27B entry outright -- a
+# quarter of the budget held back for a model that answers in a fraction of a
+# second.
+#
+# Neither of those conditions holds now. Both are on-demand, so nothing is
+# reserved when they are not running, and the budget is the whole card rather
+# than nine tenths of it. What the pinning bought was memory; what it cost was
+# speed, and on the processor that cost was severe -- 1.1 tokens a second
+# under load, against six figures of device bandwidth sitting idle beside it.
+residency = "on-demand"
+# Measured 6225 MiB on the device by `model-router bench`; a twentieth over,
+# to a quarter gibibyte. The 1024 it carried before was true of a pinned
+# entry, where the card sees only the context and compute buffers; on the
+# device it holds its weights and its cache like anything else.
+#
+# What the 5201 MiB bought: 260.9 tokens a second against 1.1 on the
+# processor, and a 2.0 second load against 7.8. That is not a tuning
+# difference, it is a different machine.
+memory_estimate_mib = 6656
+
+[models.qwen3-4b.flags]
+# Qwen3's thinking figures, as on qwen3-06b and for the same reason: this file
+# is named for an instruct build, whose figures would be 0.7 and 0.8, but the
+# template carries the thinking switch and a bare question comes back with a
+# thinking block. What it does decides which preset it gets, not what it is
+# called.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+# 40960 tokens of cache at f16 is what made this expensive on the card in the
+# first place -- the weights are under 2.5 GiB and the cache was most of the
+# rest. Quantised, as every other entry that keeps one on the device is.
+ctk = "q8_0"
+ctv = "q8_0"
+
+# Qwen3 0.6B, the laptop-tier candidate for the steward role. Downloaded
+# 2026-09-03 from the official Qwen repository, SHA-256 verified against the
+# publisher's manifest. On the device like its 4B rival, so the two are
+# measured under identical conditions; the steward correction journal will
+# decide between them on real rounds, not on file size.
+[models.qwen3-06b]
+path = "llm/qwen/qwen3-0.6b/Qwen3-0.6B-Q8_0.gguf"
+# 40960 is what these weights were trained to, and all of it. The steward
+# reads transcripts rather than snippets, so there is no reason to hand it
+# less than it can hold; 128K is not on offer at any price, because the
+# training ran out at 40960 and anything past that is rope scaling and a
+# quality question rather than a memory one.
+#
+context_size = 40960
+# On demand, and nothing on this estate is resident -- which is a decision the
+# arithmetic makes rather than a preference.
+#
+# What a resident reserves is charged against a budget derived from the device
+# and is never evicted, so the largest entry must fit in what is left *after*
+# it. Here the budget is 29,347 MiB of a 32,607 MiB card, and qwen38 wants
+# 29,184. Hold back even this 1 GiB steward and the flagship is short by 861
+# MiB and can never load -- not once, not after a wait, not with every other
+# model evicted. The refusal names whatever else happens to be loaded, which
+# reads like a transient clash and is not one.
+#
+# So the steward loads on demand like everything else. A load it pays for once
+# is worth more than a model it permanently locks out.
+#
+# That decision is also what lets it sit on the device now. The pinning it
+# carried existed to stop a resident reservation swallowing the budget; with
+# nothing reserved and the whole card available, the trade runs the other way
+# and the layers go where the arithmetic is.
+residency = "on-demand"
+# Measured 3756 MiB on the device by `model-router bench`; a twentieth over,
+# to a quarter gibibyte. It holds its weights and its cache here rather than
+# the bare overhead a pinned entry pays.
+#
+# What the 2732 MiB bought: 474.6 tokens a second against 10.2 on the
+# processor, and a 1.3 second load against 6.5.
+memory_estimate_mib = 4096
+
+[models.qwen3-06b.flags]
+# Qwen3's thinking figures, which is the mode this actually runs in: asked a
+# bare question it returns a thinking block, so the 0.6/0.95/20/0 preset
+# applies rather than the 0.7/0.8/20/0 one Qwen names for non-thinking. Qwen
+# is explicit that greedy decoding is not an option here -- it says so in
+# capitals -- because temperature 0 sends these models into repetition.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+# The three its twin has had all along. qwen3-4b is the same weights class,
+# served the same way, for the same reason, and it carried these while this
+# one did not -- an omission rather than a distinction. They are set so that
+# the two entries differ only where they mean to.
+fa = "on"
+np = "1"
+kv-unified = "true"
+# As on its twin, and for the same reason: at 40960 tokens the cache is the
+# larger half of what this costs the card, and no other entry that keeps one
+# on the device keeps it at f16.
+ctk = "q8_0"
+ctv = "q8_0"
+
+# Qwen3.8 27B, uncensored HauhauCS fine-tune. The one entry on this estate that
+# needs a patched server: its draft is a separate FastMTP sidecar, and the
+# stock build refuses it with a tensor-shape error rather than an honest
+# missing-file one. `runtime` names the build; the machine says where it is, by
+# having `llama-server-fastmtp` on the search path.
+[models.qwen38-uncensored]
+path = "llm/qwen/qwen3.8-27b-uncensored-hauhaucs/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf"
+draft_path = "llm/qwen/qwen3.8-27b-uncensored-hauhaucs/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-FastMTP-32K.gguf"
+projector_path = "llm/qwen/qwen3.8-27b-uncensored-hauhaucs/mmproj-Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+context_size = 131072
+# Measured 26944 MiB resident 2026-09-12 on an RTX 5090 (32,607 MiB), loaded
+# and generating at 107 tok/s. The margin over it is small on purpose:
+# a twentieth put this at 28416, which with the resident held was 93 MiB
+# above the budget derived from the device -- refused for room it plainly
+# had. Admission re-checks what the device reports free, which is what a
+# thin margin leans on.
+memory_estimate_mib = 27648
+reasoning_format = "deepseek"
+runtime = "fastmtp"
+
+[models.qwen38-uncensored.flags]
+# Qwen's recommended sampling, as set out on qwen38.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+spec-draft-p-min = "0"
+batch-size = "2048"
+ubatch-size = "512"
+split-mode = "none"
+load-mode = "mmap"
+image-min-tokens = "1024"
+reasoning-preserve = "true"
+
+# Qwen3.8 27B Heretic RVN, a two-pass ARA abliteration by 0bserverx over
+# trohrbaugh's heretic-ara, on the same base as qwen38-uncensored. The MTP draft
+# head is embedded in the -mtp weights, so this runs on the stock server like
+# turbo38 rather than on the patched fastmtp build qwen38-uncensored needs.
+#
+# Downloaded 2026-09-14 via `hf download` from 0bserverx/Qwen3.8-27B-Heretic-
+# Abliterated-Uncensored-GGUF; the multilingual calibration family is the
+# publisher's recommendation for new deployments. The publisher publishes no
+# SHA-256 manifest, so the file hashes are recorded here rather than checked
+# against one:
+#
+#   RVN-Q5_K_M-multilingual-mtp.gguf
+#   ea26b22990fbb436d3192663fd50b5009385d2d01f86a049003f21c1badeb6a4
+#   mmproj-Qwen3.8-27B-Q8_0.gguf
+#   2e968a6af97ce35d8971890b257b9b7edabf20ad91450501fa53162a19ee33eb
+[models.heretic38]
+path = "llm/qwen/qwen3.8-27b-heretic-0bserverx/RVN-Q5_K_M-multilingual-mtp.gguf"
+projector_path = "llm/qwen/qwen3.8-27b-heretic-0bserverx/mmproj-Qwen3.8-27B-Q8_0.gguf"
+# Three quarters of the 262144 these weights were trained to. The eight-bit
+# cache stays: what this entry gives up is window, not precision.
+#
+# 262144 was tried and withdrawn. It aborted on load --
+#
+#   CUDA error: out of memory
+#     in ggml_backend_cuda_buffer_clear, from llama_kv_cache::clear
+#
+# -- whenever anything else held more than about 1.7 GiB of the device, which
+# a desktop and a browser reach without trying. The router did not refuse it:
+# the child died, because the entry declared less than it takes.
+#
+# Measured on an RTX 5090 on 2026-09-18, one at a time, launched with the
+# whole flag set below. The memory column is what each load took out of the
+# device's free pool, which is the figure admission weighs:
+#
+#   context   cache    took MiB   free after   rate
+#    196608    q8_0       28601         2289   88.6 tok/s
+#    163840    q8_0       27136         3754   88.0 tok/s
+#    131072    q8_0       25730         5160   92.7 tok/s
+#
+# The first row is this entry. It leaves 2289 MiB for everything else on the
+# card, against the 193 MiB that 262144 left on the last day it still fitted.
+#
+# The 38.4 tok/s once recorded for 262144 was never the cache's doing. The
+# same eight-bit cache runs at 88.6 here: that figure measured a model with no
+# room left, not a slow one. Four bits would buy back about 1.3 GiB and cost
+# precision on long-context recall, which is what this window is for, so the
+# window was shortened instead.
+context_size = 196608
+# Took 28601 MiB out of the free pool on 2026-09-18 at this context, and
+# `bench` read 28641 resident for the same load: two instruments, 40 MiB
+# apart. A fiftieth over the larger, to a quarter gibibyte.
+#
+# `bench` proposes a twentieth, which would be 30208 -- the figure this
+# replaces. It is not taken, for the reason qwen38 and ornith15 record: a
+# twentieth on an entry this size lands above what the device can offer on an
+# ordinary day, and the entry is then refused for room it plainly has. The
+# margin is thin on purpose, and admission re-reads what the device reports
+# free before it starts anything, which is the backstop it leans on.
+#
+# The 28536 recorded here for 262144 on 2026-09-16 cannot describe this
+# binary: it is below what 196608 measures today, and a longer window cannot
+# cost less. Whether it was wrong when written or the server changed under it
+# was not established; 262144 aborts now either way.
+#
+# The estimator is no substitute. llama-fit-params projects 27709 for 262144,
+# because it cannot be given the projector and it does not know the second
+# context that --spec-type draft-mtp builds. Both are real and both are on
+# the card, which is the whole of ADR 0003.
+memory_estimate_mib = 29184
+reasoning_format = "deepseek"
+
+[models.heretic38.flags]
+# Qwen's recommended sampling, as set out on qwen38.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+spec-draft-p-min = "0"
+batch-size = "2048"
+ubatch-size = "512"
+split-mode = "none"
+load-mode = "mmap"
+image-min-tokens = "1024"
+reasoning-preserve = "true"
+
+# DavidAU's TURBO Fable Cold Fusion, a multi-stage tune and merge over the same
+# Qwen 3.8 27B everything else in this family sits on. Architecturally it is
+# the stock model: qwen35, 65 blocks, full_attention_interval of 4, 24 heads
+# over 4 key-value heads. What differs is where the speculative draft lives --
+# nextn_predict_layers is 1 and the tensors are at blk.64, inside the weights,
+# so this runs on the stock server like ornith15 and not on the patched build
+# qwen38-uncensored needs.
+#
+# Two entries over the same tune, because at this size the card will not give
+# both the better weights and the longer reach. This one takes the weights.
+[models.turbo38]
+path = "llm/qwen/qwen3.8-27b-turbo-davidau/Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q6_K.gguf"
+projector_path = "llm/qwen/qwen3.8-27b-turbo-davidau/mmproj-F16.gguf"
+# The weights are trained to 262144 and 131072 is what a Q6 of them can afford:
+# at 262144 the cache alone wants 8704 MiB, which leaves 18140 for weights and
+# these are 22921. See turbo38-long for the other side of that trade.
+#
+# This briefly ran at 98304. `bench` measured it at 29745 here, past the 29347
+# MiB the router used to derive by holding a tenth of the card back, so the
+# context came down to fit a margin rather than the card. The margin is now
+# the operator's to set and this estate sets it to the whole device -- see
+# MAESTRO_MEMORY_BUDGET_MIB in the service file -- so the context goes back to
+# what the weights and the card actually allow.
+context_size = 131072
+# Measured 30033 MiB resident 2026-09-12 on an RTX 5090, answering an
+# eight-hundred-token request. `bench` reads 29745 for its own hundred and
+# twenty-eight, and the larger is the one declared: what an entry costs grows
+# with what is asked of it, and the figure has to cover the heavier ask.
+#
+# The margin is deliberately smaller than this file's twentieth, for a reason
+# that only applies at this size. A twentieth is 31535, and the card idles at
+# about 1270 MiB with a desktop on it, leaving roughly 31330 free -- so a
+# figure that large leaves almost nothing between the declaration and the live
+# reading admission checks it against. Over-declaring stops being the safe
+# direction once the declared figure approaches what the device actually has.
+memory_estimate_mib = 30464
+reasoning_format = "deepseek"
+
+[models.turbo38.flags]
+# Qwen's recommended sampling, as set out on qwen38. This tune's own card
+# repeats it, and adds that a temperature above 1 degrades the multiple-token
+# prediction and that the repeat penalty should stay off -- llama-server
+# leaves it off already, so only the first is a thing to keep in mind.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+
+# The same tune four bits lighter, which is what buys the full 262144 its
+# weights were trained for. The publisher's claim is that the Cold Fusion
+# training put 4-bit within a point of 8-bit, and q4km is the floor he names
+# for tool calling -- so this is the quantisation to spend the context on, and
+# not one below it.
+[models.turbo38-long]
+path = "llm/qwen/qwen3.8-27b-turbo-davidau/Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q4_K_M.gguf"
+projector_path = "llm/qwen/qwen3.8-27b-turbo-davidau/mmproj-F16.gguf"
+# 196608 rather than the 262144 these weights hold, because the cost does not
+# scale the way the arithmetic suggests and the card was asked directly:
+# 196608 takes 27863 MiB, 229376 takes 29296, and 262144 takes 29688. Only the
+# first leaves enough room to declare a figure with any margin on it -- 224K
+# clears the budget by 51 MiB, which is not a margin, and 256K does not clear
+# it at all.
+#
+# Two things that looked like they would buy the last 64K and did not. Dropping
+# to a q5_1 or q4_0 cache made it *worse*, 30112 and 30218: llama.cpp is
+# falling back for this hybrid-attention architecture rather than honouring
+# the flag. And dropping the projector saved 131 MiB, not the 885 its file
+# weighs, so vision is kept here -- it was never what the room was going to.
+context_size = 196608
+# Measured 27863 MiB resident 2026-09-12 on an RTX 5090, loaded and answering:
+# a twenty-sixth over, to a quarter gibibyte. The usual twentieth is 29256 and
+# would round to 29440, past the budget.
+memory_estimate_mib = 28928
+reasoning_format = "deepseek"
+
+[models.turbo38-long.flags]
+# Qwen's recommended sampling, as set out on qwen38.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+
+# Qwopus 3.8 27B. Text only -- no projector, unlike its siblings.
+[models.qwopus38]
+path = "llm/qwen/qwopus3.8-27b/Qwopus3.8-27B-UD-Q4_K_XL.gguf"
+# The whole 262144 these weights were trained to, which no other 27B entry
+# here can afford. This is the lightest of them by some way, and the room it
+# saves is spent on context rather than left idle.
+context_size = 262144
+# Measured 28430 MiB resident 2026-09-12 on an RTX 5090, loaded and answering.
+# The earlier figure of 24064 was this entry at 131072, which measured 22683 --
+# so the second 128K cost 5747 MiB, and unlike gemma4 this model has no window
+# to keep that cheap.
+#
+# This entry runs *above* what arithmetic over its files predicts, which was
+# already true at 131072: the derivation said 21504 where it took 22683, and
+# says 27350 here where it takes 28430. So the figure below is measured and
+# not derived, and the margin over it is a fiftieth rather than a twentieth --
+# a twentieth is 29852, past the 29347 MiB the router derives from the device.
+# What is left under the budget, 419 MiB, is more than qwen38 has carried
+# since it was measured.
+memory_estimate_mib = 28928
+reasoning_format = "deepseek"
+
+[models.qwopus38.flags]
+# Jackrong's figures, read from the generation_config.json in
+# Jackrong/Qwopus3.8-27B-Flash: temperature 1.0, top-k 20, top-p 0.95.
+#
+# This entry previously carried 0.3, 40 and 0.9 under a comment calling them
+# the publisher's recommendation. They are not: the publisher's own file says
+# otherwise, nothing in either the model card or the GGUF card names 0.3, and
+# a top-k of 40 is exactly what llama-server falls back to when nobody says --
+# which is the tell that it was inherited rather than chosen. If the low
+# temperature was wanted for its own sake, it wants saying as that, and this
+# is the line to put it back on.
+temp = "1.0"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+spec-type = "draft-mtp"
+spec-draft-n-max = "2"
+spec-draft-p-min = "0"
+batch-size = "2048"
+ubatch-size = "512"
+split-mode = "none"
+load-mode = "mmap"
+reasoning-preserve = "true"
+
+# Gemma 4 26B. The cheapest of the large entries and by some way the fastest,
+# which is the trade its shorter context buys.
+[models.gemma4]
+path = "llm/google/gemma-4-26b/gemma-4-26B_q4_0-it.gguf"
+projector_path = "llm/google/gemma-4-26b/gemma-4-26B-it-mmproj.gguf"
+# The whole 262144 these weights were trained to, up from the 32768 this ran
+# at, and it is very nearly free. Of this model's 30 layers, 25 attend over a
+# 1024-token sliding window and only 5 keep a cache that grows with the
+# context -- so eight times the window costs about what one extra layer would.
+# Nothing here is the card's doing: 262144 is where the training stopped.
+context_size = 262144
+# Measured 19847 MiB resident 2026-09-12 on an RTX 5090, loaded and answering:
+# a twentieth over, to a quarter gibibyte. The trail behind it, all measured on
+# the same card the same day: 16764 at 32768 on an f16 cache, 17834 at 131072
+# once the cache was quantised, 19847 at 262144. Eight times the context for
+# 3083 MiB, which is what a sliding window buys and the reason this entry gets
+# the long context the 27B ones cannot afford.
+memory_estimate_mib = 20992
+
+[models.gemma4.flags]
+# Google's figures again, and its card is unusually firm about them: "use the
+# following standardized sampling configuration across all use cases" --
+# temperature 1.0, top-p 0.95, top-k 64. No separate preset for thinking or
+# for code, unlike every Qwen here. min-p is not named, and 0 leaves the
+# floor to top-k rather than letting llama-server's 0.05 cut underneath it.
+temp = "1.0"
+top-k = "64"
+top-p = "0.95"
+min-p = "0"
+# Quantised keys and values, as every other large entry here already had. This
+# was the one that did not, and at f16 it paid twice over for a cache the
+# sliding window keeps small anyway. Flash attention is what makes a quantised
+# cache available at all, and it was already on.
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+
+# Ornith 1.5, 35B with 3B active. Its multiple-token prediction is built into
+# the weights rather than carried by a sidecar, so it runs on the stock server
+# despite the speculative flags.
+[models.ornith15]
+path = "llm/ornith/ornith-1.5-35b-a3b/Ornith-1.5-35B-Q5_K_M.gguf"
+projector_path = "llm/ornith/ornith-1.5-35b-a3b/mmproj-Ornith-1.5-35B-BF16.gguf"
+# Doubled from 65536. Only 3B of these 35B parameters are active and the cache
+# is already quantised, so the second 64K reads as about 680 MiB by the
+# estimator. The weights are trained to 262144 and the card is what stops this
+# short of it: at 131072 the entry very nearly fills the budget on its own.
+context_size = 131072
+# Measured 28179 MiB resident 2026-09-12 on an RTX 5090, loaded and answering.
+# The earlier figure of 28160 was this entry at 65536, which measured 26765 --
+# so the second 64K cost 1414 MiB.
+#
+# The margin is a fiftieth rather than this file's usual twentieth, for the
+# reason qwen38 carries the same: a twentieth over puts this at 29588, above
+# the 29347 MiB the router derives from the device, and the entry would be
+# refused for room it plainly has. Admission re-checks what the device reports
+# free before it starts anything, which is the backstop a thin margin leans on.
+memory_estimate_mib = 28672
+reasoning_format = "deepseek"
+
+[models.ornith15.flags]
+# ornith-ai names two sets and this is the first: "for general tasks,
+# temperature=0.6, top_p=0.95, top_k=20". The second, temperature 1.0, exists
+# to reproduce their published benchmarks, which is not what this estate does.
+# Their generation_config ships the benchmark figure, so taking the file at
+# face value would have picked the wrong one of the two.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+n-gpu-layers-draft = "999"
+spec-type = "draft-mtp"
+spec-draft-n-max = "3"
+spec-draft-p-min = "0"
+batch-size = "2048"
+ubatch-size = "512"
+split-mode = "none"
+load-mode = "mmap"
+image-min-tokens = "1024"
+reasoning-preserve = "true"
+
+# MiniCPM5 2B, the small model this estate did not have. The two Qwen3s below
+# 4B are pinned to the processor and answer at walking pace; gemma3 is a 1B at
+# its trained ceiling. This one is `llama` by architecture, so the stock server
+# takes it with nothing special, and it is the only entry under 20B that runs
+# wholly on the device.
+[models.minicpm5]
+path = "llm/openbmb/minicpm5-2b/MiniCPM5-2B-Q8_0.gguf"
+# The whole 131072 these weights carry, which a model this small can simply
+# afford: 42 layers over 2 key-value heads is a cache measured in hundreds of
+# bytes per token, where the 27B entries spend thousands.
+context_size = 131072
+# Measured 5973 MiB resident 2026-09-12 on an RTX 5090, loaded and answering,
+# and it answered in a second: a twentieth over, to a quarter gibibyte. The
+# whole 131072 costs this entry less than gemma4 spends on weights alone.
+memory_estimate_mib = 6400
+
+[models.minicpm5.flags]
+# Qwen's figures do not apply here -- this is OpenBMB's model on Meta's
+# architecture -- so these are the publisher's own, read from its
+# generation_config.json.
+temp = "0.6"
+top-k = "20"
+top-p = "0.95"
+min-p = "0"
+ctk = "q8_0"
+ctv = "q8_0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+
+# The estate's first entry bought for tool calling rather than for talking,
+# and the reason is a measured failure rather than a benchmark table. Driving
+# BMC's Control-M Workflow Creator, qwen3-4b fetched the correct AAPI examples
+# through the agent's own tools and then emitted a shape of its own invention
+# anyway -- arrays of named objects where the format has none. It was not
+# missing the example; it had the example in context and could not hold the
+# structure while it wrote 8061 tokens of reply. That is the specific
+# competence this entry is here to supply.
+#
+# Salesforce's own figures put it third on BFCL v3 multi-turn, above models it
+# has no business beating on size. Multi-turn is the column that matters here:
+# the Creator's agents call four to eight tools in a turn and have to keep the
+# results straight afterwards.
+#
+# The license is cc-by-nc-4.0, which is a real constraint and not a formality.
+# Non-commercial only -- this estate's lab work qualifies and a customer
+# deployment would not. Recorded here because a catalog entry is where someone
+# will look when they reach for it later.
+#
+# Downloaded 2026-09-17 from the publisher's own GGUF repository, SHA-256
+# verified against the publisher's manifest.
+#
+# MEASURED UNUSABLE FOR THE JOB IT WAS BOUGHT FOR, and kept here with the
+# reason rather than deleted, so the next person to reach for it does not
+# repeat the afternoon. Two findings, both reproducible:
+#
+#   its tool calls are not parsed. Asked for a tool with an OpenAI tools
+#   array, it answers correctly and in its own dialect -- the content comes
+#   back as [{"name": "commonJobTypes", "arguments": {}}] and tool_calls is
+#   empty. The decision is right; this server does not recognise the format.
+#   Forcing a dialect it does parse, with --chat-template llama3, makes the
+#   model incoherent: asked about Control-M job types it answered about
+#   lists of people and companies. The weights are bound to their template.
+#
+#   its template cannot render a tool result. Any conversation carrying a
+#   tool-role message is refused 400 by the template engine itself:
+#     Unable to generate parser for this template ... line 74, column 34
+#     Error: selectattr: item is not an object
+#   That is minja failing on `dict(message.items() | rejectattr(...))`, and it
+#   is fatal here. Multi-turn tool use -- call, read the result, continue --
+#   is the entire competence this entry was brought in to supply, and it is
+#   the one path that cannot complete.
+#
+# On the three Control-M agent tasks it scored 0 of 6 against qwen3-4b's 6 of
+# 6. The 6 of 6 is the more interesting number: it is what qwen3-4b scores
+# after the Workflow Creator's own prompt defects were repaired, and those
+# repairs, not a larger model, are what fixed the workload. See
+# maestro-controlm-env: ansible/files/jett/bench_model_agents.py for the
+# measurement and docs/decisions/0009 for the prompt repairs.
+#
+# A corrected template supplied through --chat-template-file would likely
+# clear both findings, since the publisher's Jinja is at fault rather than the
+# weights. Not attempted, because the workload it was for no longer needs it.
+[models.xlam2]
+path = "llm/salesforce/llama-xlam-2-8b-fc-r/Llama-xLAM-2-8B-fc-r-Q6_K.gguf"
+# Q6_K, where the reflex for an 8B would be Q4_K_M, because the card had the
+# room -- 23953 MiB free when this was chosen -- and because quantisation
+# damage lands precisely on what this entry is for. A model kept for
+# reproducing a nested structure exactly is the worst place to spend accuracy
+# for a gibibyte and a half.
+#
+# 32768 rather than the 131072 these weights carry. Llama 3.1's geometry makes
+# that ceiling unaffordable here: 32 layers over 8 key-value heads is about
+# 64 KiB per token with the cache quantised, so the full context would cost
+# 8.6 GiB of cache on top of 6.1 GiB of weights. The workload does not want
+# it either -- the Creator's longest observed turn was 8061 input tokens, so
+# this leaves four times the headroom it has ever needed.
+context_size = 32768
+# Measured 8799 MiB resident on 2026-09-18 by `model-router bench`; a
+# twentieth over, to a quarter gibibyte. Was 9216 MiB, guessed from the file
+# size plus a cache calculation, and the guess was low by about 400 MiB.
+#
+# What the measurement also settled: 6.8 s to load and 164.9 tokens a second,
+# against qwen3-4b's 260.9. Two thirds the speed for twice the parameters is
+# the trade this entry exists to make, and on the Creator's turns -- seconds
+# of generation, not minutes -- it is not the constraint.
+memory_estimate_mib = 9472
+
+[models.xlam2.flags]
+# The publisher's own, read from its generation_config.json, on the same
+# principle as minicpm5: what the model was configured to do decides this, not
+# what the task would prefer. A structured-output entry invites a lower
+# temperature and it is deliberately not set here on that hunch -- if the
+# shape drifts under measurement, 0.6 is the first thing to move, with the
+# measurement recorded beside it.
+temp = "0.6"
+top-p = "0.9"
+min-p = "0"
+fa = "on"
+np = "1"
+kv-unified = "true"
+# Quantised, as every entry that keeps its cache on the device is. At 64 KiB a
+# token this one has more to gain from it than most.
+ctk = "q8_0"
+ctv = "q8_0"
+
+# The estate's first embedding model, and the reason it is not a chat one: a
+# vector for a passage is not a thing a 27B should be woken to produce. Served
+# through the same generic endpoint as everything else -- /v1/embeddings names
+# its model in the body exactly as /v1/chat/completions does -- so nothing in
+# the router needed changing to reach it.
+#
+# bge-m3 and not the Qwen3-Embedding-0.6B this entry first carried, nor the
+# all-MiniLM-L6-v2 that would be the reflex, because the three were measured
+# against each other on this repository's own comments. Qwen was given its
+# documented `Instruct:` query prefix, which is worth the 1 to 5 percent its
+# card claims and did not close the gap. MiniLM was never run: it stops at 512
+# positions and these chunks are longer, which is a fact about the corpus
+# rather than a judgement about the model.
+#
+# Measured twice, and the second time is the one to believe. Ten hand-written
+# questions put bge-m3 at 0.560 against Qwen's 0.315 and BM25's 0.362; sixty-
+# seven questions over 279 chunks put it at 0.713 against BM25's 0.689. The
+# ordering held and the margin did not, which is what ten of anything is worth.
+# See the rerank entry below for what the same widening did to a conclusion
+# that had been the wrong way round entirely.
+#
+# Published by ggml-org, which is llama.cpp's own account, so the file is known
+# to load rather than hoped to.
+#
+[models.embed]
+path = "llm/baai/bge-m3/bge-m3-q8_0.gguf"
+# 8194 is this model's whole trained window, against Qwen3-Embedding's 32768.
+# That was the one axis on which Qwen looked better and the reason it was
+# chosen first; retrieval quality on the actual corpus outweighed it.
+context_size = 8192
+# Measured 880 MiB resident 2026-09-12 on an RTX 5090, returning vectors: a
+# twentieth over, to a quarter gibibyte. It first shipped at 2560, derived
+# rather than measured because the device was busy, and the reading is what
+# found the estimator charging every embedding entry a cache it never keeps --
+# fixed in `embeds_only`, which took the derivation from 2428 to 1660. What
+# remains above the measurement is the fixed overhead every entry carries.
+# 2026-09-14, batches 8192: bench 1167 MiB; sampled device delta 1169 MiB.
+memory_estimate_mib = 1280
+
+[models.embed.flags]
+# `embeddings` is what makes this an embedding server, and it is exclusive:
+# a child started with it answers /v1/embeddings and refuses chat outright.
+# That is why this is its own entry over its own weights rather than a flag on
+# something else.
+embeddings = "true"
+# BGE pools the classifier token, where Qwen3-Embedding took the last one.
+# Getting this wrong returns vectors of the right shape that mean nothing,
+# which is why the entry was checked against known-related text rather than
+# only for a 200.
+pooling = "cls"
+# Encoder sequences must fit a physical batch; the default 512 rejects long docs.
+batch-size = "8192"
+ubatch-size = "8192"
+fa = "on"
+np = "1"
+kv-unified = "true"
+
+# The reranker, which is the third stage of retrieval and the one that pays.
+# An embedder turns a passage into a vector once and compares vectors; this
+# reads the query and the passage together and scores the pair, which is why
+# it is slower per document and better at saying which of them answers.
+#
+# Declared on a measurement that reversed itself, and the reversal is the
+# point. Ten questions said reranking made retrieval worse -- 0.560 down to
+# 0.539 at depth ten -- so the model was downloaded and left out of this file.
+# Sixty-seven questions over the same 279 chunks said the opposite:
+#
+#   bge-m3 alone                        MRR 0.713, 40 of 67 first
+#   BM25 and bge-m3 fused               MRR 0.764, 44 of 67 first
+#   bge-m3 then reranked, top 10        MRR 0.845, 53 of 67 first
+#   bge-m3 then reranked, top 20        MRR 0.858, 54 of 67 first
+#
+# At depth twenty it moved twenty queries up and four down. The first reading
+# was not a smaller version of the second, it was the wrong sign, and ten
+# questions is how that happens.
+#
+# Twelve milliseconds a pair on this card, so reranking twenty candidates costs
+# about a quarter of a second -- affordable after a retrieval, and not
+# something to run over a whole corpus.
+[models.rerank]
+path = "llm/baai/bge-reranker-v2-m3/bge-reranker-v2-m3-Q8_0.gguf"
+context_size = 8192
+# Measured 890 MiB resident 2026-09-12 on an RTX 5090, scoring pairs: a
+# twentieth over, to a quarter gibibyte. Within ten MiB of the embedder beside
+# it, which is what two 600 MB files that keep no cache should cost.
+# 2026-09-14, batches 8192: bench 1171 MiB; sampled device delta 1176 MiB.
+memory_estimate_mib = 1280
+
+[models.rerank.flags]
+# `reranking` turns on the /v1/rerank endpoint and, like `embeddings` on the
+# entry above, is exclusive: this child scores pairs and will not hold a chat.
+# Both flags exempt an entry from the cache term in the estimate, because
+# neither way of running a model keeps one.
+reranking = "true"
+# Query and document must fit one encoder batch, just like embeddings above.
+batch-size = "8192"
+ubatch-size = "8192"
+fa = "on"
+np = "1"
+kv-unified = "true"
