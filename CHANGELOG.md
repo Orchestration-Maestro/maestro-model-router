@@ -26,5 +26,16 @@ records as the commit on `main`.
 - `serve` waits up to 30 seconds for an address no interface holds yet.
 - `MAESTRO_API_KEY` and `MAESTRO_ALLOWED_ORIGINS` narrow who may use the
   router. Both are off unless set.
+- A request whose model fits is no longer held behind one waiting for room.
+  Waiting requests take the room in the order they asked, look again the
+  moment a model is let go rather than every quarter second, and are told to
+  ask again when the catalog is reloaded under them.
+- A caller that sends none of its request, or reads none of its answer, for a
+  minute is let go; at most 256 connections are answered at once, and the rest
+  wait in the operating system's backlog.
+- Relayed writes are sent as they are made, not held for the last one's
+  acknowledgement.
+- Where the driver reports nothing per process on the device, as under WSL, a
+  model is counted at how far the device's free memory fell while it loaded.
 
 Nothing released yet. The first tag will be `v0.1.0`.
