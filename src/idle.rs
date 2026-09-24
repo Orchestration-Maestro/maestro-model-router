@@ -21,6 +21,19 @@ use crate::proxy::Access;
 /// Where the idle window is configured, mirroring `MAESTRO_MEMORY_BUDGET_MIB`.
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";
 
+/// How long a caller may make no progress -- send nothing of its request,
+/// read nothing of its answer -- before its connection is given up on.
+///
+/// A minute: far longer than a client that is still working pauses, and short
+/// enough that one that stopped does not hold a model, or a thread, for long.
+const STALL: Duration = Duration::from_secs(60);
+
+/// How many connections are answered at once; the rest wait to be accepted.
+///
+/// Far above what the callers of one machine's models open together, and far
+/// below the threads a process can make: the bound is on a flood, not on use.
+const CONNECTIONS: usize = 256;
+
 /// What `Router::bind` needs to know about one machine -- its memory, and who
 /// may use it -- in the one value that keeps it a fifth argument rather than
 /// a sixth.
@@ -34,6 +47,8 @@ pub struct Limits {
     pub(crate) idle_window: IdleWindow,
     pub(crate) wait: Wait,
     pub(crate) access: Access,
+    pub(crate) stall: Duration,
+    pub(crate) connections: usize,
 }
 
 impl Limits {
@@ -45,6 +60,8 @@ impl Limits {
             idle_window,
             wait,
             access: Access::default(),
+            stall: STALL,
+            connections: CONNECTIONS,
         }
     }
 
@@ -53,6 +70,24 @@ impl Limits {
     #[must_use]
     pub fn with_access(self, access: Access) -> Self {
         Self { access, ..self }
+    }
+
+    /// The same limits, with how long a caller may make no progress; a minute
+    /// unless this is given. A test gives less, having no minute to spend.
+    #[must_use]
+    pub fn with_stall(self, stall: Duration) -> Self {
+        Self { stall, ..self }
+    }
+
+    /// The same limits, answering at most this many connections at once;
+    /// 256 unless this is given. A test gives a few, having no hundreds of
+    /// sockets to open.
+    #[must_use]
+    pub fn with_connections(self, connections: usize) -> Self {
+        Self {
+            connections,
+            ..self
+        }
     }
 }
 

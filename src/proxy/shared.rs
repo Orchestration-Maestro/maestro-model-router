@@ -59,6 +59,10 @@ pub(super) struct Shared {
     pub(super) idle_window: IdleWindow,
     /// Who may use the router, checked before anything else is done.
     pub(super) access: super::Access,
+    /// How long a caller may make no progress before it is given up on.
+    pub(super) stall: std::time::Duration,
+    /// How many connections are answered at once.
+    pub(super) permits: super::listen::Permits,
     /// Wakes the reaper the moment [`Router::stop`] is called. See
     /// [`reaper::Stop`] for why a `Weak<Shared>` alone is not enough: the
     /// test harness never drops a `Router`, so nothing would ever end it.

@@ -457,6 +457,40 @@ fn launched(
     launched_with(catalog, root, limits)
 }
 
+/// A router under a stated memory budget that gives up on a caller making no
+/// progress after `stall`, rather than after the minute a router in service
+/// gives -- which a test has no time to spend.
+///
+/// # Panics
+///
+/// If the catalog is not usable or the port cannot be bound, which is a broken
+/// test rather than a failing one.
+#[must_use]
+pub fn impatient(
+    catalog: &str,
+    root: ModelsRoot,
+    limit_mib: Option<u32>,
+    stall: Duration,
+) -> Serving {
+    launched_with(catalog, root, open_limits(limit_mib).with_stall(stall))
+}
+
+/// A router that answers at most `connections` callers at once, with no
+/// budget, no idle window and no wait.
+///
+/// # Panics
+///
+/// If the catalog is not usable or the port cannot be bound, which is a broken
+/// test rather than a failing one.
+#[must_use]
+pub fn capped(catalog: &str, root: ModelsRoot, connections: usize) -> Serving {
+    launched_with(
+        catalog,
+        root,
+        open_limits(None).with_connections(connections),
+    )
+}
+
 /// A router serving `catalog` under these rules for who may use it, with no
 /// budget, no idle window and no wait.
 #[must_use]
@@ -465,13 +499,17 @@ pub fn guarded(
     root: ModelsRoot,
     access: maestro_model_router::proxy::Access,
 ) -> Serving {
-    let limits = maestro_model_router::idle::Limits::new(
-        maestro_model_router::admission::Budget::new(None),
+    launched_with(catalog, root, open_limits(None).with_access(access))
+}
+
+/// Limits under this budget with no idle window and no wait: what a helper
+/// that is about something else starts from, and adjusts.
+fn open_limits(limit_mib: Option<u32>) -> maestro_model_router::idle::Limits {
+    maestro_model_router::idle::Limits::new(
+        maestro_model_router::admission::Budget::new(limit_mib),
         maestro_model_router::idle::IdleWindow::new(Duration::ZERO),
         maestro_model_router::queue::Wait::new(Duration::ZERO),
     )
-    .with_access(access);
-    launched_with(catalog, root, limits)
 }
 
 /// A router serving `catalog` from `root` within these limits.

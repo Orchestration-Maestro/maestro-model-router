@@ -22,6 +22,12 @@ use super::{Shared, body, head, relay, reply};
 
 /// Answers one connection.
 pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> {
+    // A caller that sends none of its request, or reads none of its answer,
+    // for this long is given up on: the watch sees a caller leave, not one
+    // that stays and does nothing. Set on the socket, so the clone the head
+    // is read through and every write of the answer carry it.
+    drop(stream.set_read_timeout(Some(shared.stall)));
+    drop(stream.set_write_timeout(Some(shared.stall)));
     let mut reader = BufReader::new(stream.try_clone()?);
 
     let lines = match head::read(&mut reader) {

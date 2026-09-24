@@ -121,6 +121,8 @@ impl Router {
                 resident_failures: Mutex::new(Vec::new()),
                 idle_window: limits.idle_window,
                 access: limits.access,
+                stall: limits.stall,
+                permits: listen::Permits::new(limits.connections),
                 stop: Stop::new(),
             }),
         })

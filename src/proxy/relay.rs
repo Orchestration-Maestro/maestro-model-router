@@ -16,7 +16,7 @@
 //! message.
 
 use std::io::{BufReader, ErrorKind, Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -39,7 +39,9 @@ const BUFFER: usize = 8 * 1024;
 /// Returns whatever the sockets returned while the request was being sent.
 /// Once the response has begun, failures on either side end the relay rather
 /// than propagating: there is no status left to send, and the caller's client
-/// library is built to notice a closed connection.
+/// library is built to notice a closed connection. A write that times out is
+/// one of those failures, which is how a caller that reads nothing for as long
+/// as its socket allows is given up on.
 pub(super) fn run(
     head: &Head,
     child: &Child,
@@ -48,7 +50,7 @@ pub(super) fn run(
     downstream: &mut TcpStream,
 ) -> std::io::Result<()> {
     let endpoint = child.endpoint();
-    let mut upstream = TcpStream::connect(endpoint)?;
+    let mut upstream = upstream_to(endpoint)?;
     upstream.write_all(head.rewrite(endpoint).as_bytes())?;
     match body {
         // Already read, because the generic endpoint had to look inside it to
@@ -66,6 +68,19 @@ pub(super) fn run(
     // how `llama-server` is told to stop generating, so a caller that hung up
     // does not leave a model producing an answer nobody reads.
     Ok(())
+}
+
+/// Connects to the child, sending each write as it is made.
+///
+/// A request is a head and then a body, and a socket that held a small write
+/// until the last was acknowledged -- Nagle's algorithm -- would hold the body
+/// back behind its own head for as long as the child delays that
+/// acknowledgement. A socket that will not take the setting is still a
+/// connection, and is used as one.
+fn upstream_to(endpoint: SocketAddr) -> std::io::Result<TcpStream> {
+    let upstream = TcpStream::connect(endpoint)?;
+    drop(upstream.set_nodelay(true));
+    Ok(upstream)
 }
 
 /// Copies exactly the body the caller declared.
@@ -115,6 +130,9 @@ const WATCH: Duration = Duration::from_millis(100);
 /// nothing for minutes. Without the watch, such a model stayed busy and kept
 /// generating for nobody until it spoke.
 fn copy_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
+    // One write per event, sent when it is made rather than batched with the
+    // next: the same reason as `upstream_to`, on the side a stream leaves by.
+    drop(downstream.set_nodelay(true));
     let relaying = Arc::new(AtomicBool::new(true));
     let watch = watch(downstream, upstream, &relaying);
     relay_response(upstream, downstream);
@@ -211,6 +229,56 @@ mod tests {
         let near = TcpStream::connect(address).expect("a connection");
         let (far, _) = listener.accept().expect("the connection, accepted");
         (near, far)
+    }
+
+    #[test]
+    fn a_write_that_times_out_ends_the_relay_though_the_child_has_more() {
+        // How a caller that stays connected and reads nothing is given up
+        // on: the watch cannot see it, since it has not left, but a write to
+        // it times out. A relay that took the timeout for a pause and tried
+        // again would hold the model for as long as the caller stayed.
+        let (mut upstream, mut child) = connection();
+        let (mut downstream, _caller) = connection();
+        downstream
+            .set_write_timeout(Some(Duration::from_millis(200)))
+            .expect("a write timeout");
+        thread::spawn(move || {
+            // Far more than any pair of socket buffers holds, so writes to a
+            // caller that reads nothing block.
+            let chunk = vec![b'x'; 1 << 20];
+            for _ in 0..512 {
+                if child.write_all(&chunk).is_err() {
+                    break;
+                }
+            }
+        });
+        let (done, finished) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            copy_response(&mut upstream, &mut downstream);
+            done.send(()).ok();
+        });
+
+        finished
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the relay gave up on a caller that read nothing");
+    }
+
+    #[test]
+    fn neither_side_of_a_relay_holds_a_small_write_back() {
+        // A streamed answer is one small write per event, and a request is a
+        // head and then a body. A socket that held each small write until the
+        // last was acknowledged -- Nagle's algorithm -- would deliver tokens
+        // in bursts, and could hold a body back behind its own head.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let upstream = upstream_to(listener.local_addr().expect("its address"))
+            .expect("a connection to the child");
+        assert!(upstream.nodelay().expect("its setting"), "to the child");
+
+        let (mut upstream, child) = connection();
+        drop(child);
+        let (mut downstream, _caller) = connection();
+        copy_response(&mut upstream, &mut downstream);
+        assert!(downstream.nodelay().expect("its setting"), "to the caller");
     }
 
     #[test]
