@@ -224,6 +224,39 @@ const ACCEPTED: &[(&str, &str)] = &[
          but the variants they are keyed on.",
     ),
     (
+        "allows <-> suffix",
+        "The pair above seen from its other side: allows reads allowed, and \
+         the gate matched it against suffix once load and unload gave both \
+         matches two more arms. Nothing is written twice; allows is one \
+         call to allowed.",
+    ),
+    (
+        "let_go <-> touch",
+        "Both reach one slot by id and act on what it holds, which is the \
+         lock order every path in the slots module keeps. One empties the \
+         slot unless its child is busy; the other stamps it and never \
+         empties anything. The shared lines are that lookup.",
+    ),
+    (
+        "load <-> unload",
+        "Each works out an outcome and hands it to answered, which is where \
+         what they had in common went. What remains is the outcome itself -- \
+         admission for one, an idle take for the other -- and a function \
+         choosing between them on a flag is the shape this file refuses \
+         elsewhere.",
+    ),
+    (
+        "reload <-> load",
+        "The same three-line shape as load and unload, for the same reason: \
+         the reply is factored into answered, and what each computes is \
+         unrelated -- a catalog re-read against a child started.",
+    ),
+    (
+        "reload <-> unload",
+        "As reload and load: one shape, handed to answered, around a catalog \
+         re-read in one and a child let go in the other.",
+    ),
+    (
         "an_embedding_entry_is_not_charged_a_cache_it_never_keeps \
          <-> a_reranking_entry_is_not_charged_a_cache_either",
         "Two flags the server keys on separately, asserted the same way \

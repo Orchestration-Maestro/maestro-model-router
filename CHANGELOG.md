@@ -37,5 +37,10 @@ records as the commit on `main`.
   acknowledgement.
 - Where the driver reports nothing per process on the device, as under WSL, a
   model is counted at how far the device's free memory fell while it loaded.
+- `just reload` re-reads the catalog through `POST /reload` rather than
+  restarting the router, so nothing loaded is interrupted.
+- `POST /models/load` and `POST /models/unload`, in llama.cpp's router shape,
+  load a model before anything asks it a question and give its memory back
+  before its idle window ends. A model answering a request is not unloaded.
 
 Nothing released yet. The first tag will be `v0.1.0`.

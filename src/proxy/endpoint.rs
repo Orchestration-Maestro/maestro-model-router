@@ -39,6 +39,12 @@ const PROPERTIES: &str = "/props";
 /// sometimes ended the router instead would be worse than no reload.
 const RELOAD: &str = "/reload";
 
+/// The paths that start and end a model on request, in llama.cpp's router
+/// shape, each naming its model in the body. A dedicated path always carries
+/// a path after its model, so neither can be read as one.
+const LOAD: &str = "/models/load";
+const UNLOAD: &str = "/models/unload";
+
 /// Which endpoint a path addressed, and what the child is asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Endpoint {
@@ -56,6 +62,10 @@ pub(super) enum Endpoint {
     Properties,
     /// `/reload`: read the catalog file again and serve what it now says.
     Reload,
+    /// `/models/load`: start the model the body names, if it is not running.
+    Load,
+    /// `/models/unload`: end the model the body names, if nothing is reading.
+    Unload,
 }
 
 impl Endpoint {
@@ -79,6 +89,12 @@ impl Endpoint {
         }
         if bare == RELOAD {
             return Ok(Self::Reload);
+        }
+        if bare == LOAD {
+            return Ok(Self::Load);
+        }
+        if bare == UNLOAD {
+            return Ok(Self::Unload);
         }
 
         if let Some(rest) = path.strip_prefix(DEDICATED) {
@@ -134,7 +150,7 @@ impl Endpoint {
             // the router serves. A reader that fetched every path it found --
             // a health check, a crawler, a client probing for router mode --
             // would otherwise re-read the catalog as a side effect of looking.
-            Self::Reload => "POST, OPTIONS",
+            Self::Reload | Self::Load | Self::Unload => "POST, OPTIONS",
         }
     }
 
@@ -158,6 +174,8 @@ impl Endpoint {
             Self::Catalogue => CATALOGUE,
             Self::Properties => PROPERTIES,
             Self::Reload => RELOAD,
+            Self::Load => LOAD,
+            Self::Unload => UNLOAD,
         }
     }
 }
