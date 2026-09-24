@@ -22,7 +22,7 @@
 
 use std::io::{ErrorKind, Write};
 use std::net::{SocketAddr, TcpListener};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -144,13 +144,65 @@ pub(super) fn accept(listeners: &[TcpListener], shared: &Arc<Shared>) {
 }
 
 /// Accepts on one listener until the process ends.
+///
+/// A permit is taken before each accept rather than after, so a connection
+/// past the limit waits in the operating system's backlog -- which exists for
+/// exactly this -- instead of on a thread of its own.
 fn on(listener: &TcpListener, shared: &Arc<Shared>) {
-    for stream in listener.incoming().flatten() {
+    loop {
+        shared.permits.take();
+        let Ok((stream, _)) = listener.accept() else {
+            shared.permits.give();
+            continue;
+        };
         let shared = Arc::clone(shared);
         thread::spawn(move || {
+            let _held = Held(&shared.permits);
             // A failed answer is a caller that hung up, which is its own
             // business. The next connection is what matters.
-            drop(answer::to(&shared, stream));
+            drop(answer::to(&shared, &stream));
         });
+    }
+}
+
+/// How many connections may be answered at once, shared by every listener.
+pub(super) struct Permits {
+    free: Mutex<usize>,
+    freed: Condvar,
+}
+
+impl Permits {
+    /// This many, and never none: a router that could accept nothing would
+    /// be bound and silent, which is worse than either.
+    pub(super) fn new(count: usize) -> Self {
+        Self {
+            free: Mutex::new(count.max(1)),
+            freed: Condvar::new(),
+        }
+    }
+
+    /// Waits until a connection may be answered, and takes that turn.
+    fn take(&self) {
+        let free = self.free.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut free = self
+            .freed
+            .wait_while(free, |free| *free == 0)
+            .unwrap_or_else(PoisonError::into_inner);
+        *free -= 1;
+    }
+
+    /// Gives a turn back, waking an accept that is waiting for one.
+    fn give(&self) {
+        *self.free.lock().unwrap_or_else(PoisonError::into_inner) += 1;
+        self.freed.notify_one();
+    }
+}
+
+/// One connection's turn, given back however its thread ends.
+struct Held<'a>(&'a Permits);
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        self.0.give();
     }
 }

@@ -17,7 +17,7 @@ use super::reaper::Stop;
 use super::slots::Slots;
 use crate::catalog::{Catalog, Entry};
 use crate::idle::IdleWindow;
-use crate::launch::{Child, Failure, Server};
+use crate::launch::{Failure, Server};
 
 /// A catalog and the file it was read from.
 ///
@@ -59,6 +59,10 @@ pub(super) struct Shared {
     pub(super) idle_window: IdleWindow,
     /// Who may use the router, checked before anything else is done.
     pub(super) access: super::Access,
+    /// How long a caller may make no progress before it is given up on.
+    pub(super) stall: std::time::Duration,
+    /// How many connections are answered at once.
+    pub(super) permits: super::listen::Permits,
     /// Wakes the reaper the moment [`Router::stop`] is called. See
     /// [`reaper::Stop`] for why a `Weak<Shared>` alone is not enough: the
     /// test harness never drops a `Router`, so nothing would ever end it.
@@ -98,7 +102,7 @@ impl Shared {
     ///
     /// Returns a [`Failure`] when a child cannot be started, does not become
     /// ready, or is refused for want of room.
-    pub(super) fn child(&self, entry: &Entry) -> Result<Arc<Child>, Failure> {
+    pub(super) fn child(&self, entry: &Entry) -> Result<super::slots::Lease<'_>, Failure> {
         self.slots
             .child(&self.catalog(), entry, &self.server, &self.root)
     }
@@ -135,7 +139,7 @@ impl Shared {
         // admitted against one catalog and inserted into the slots of
         // another. This is the same lock loads take, in the same order, and
         // it is the whole of the argument that a reload is not a race.
-        let admission = self.slots.admitting();
+        let mut admission = self.slots.admitting();
 
         let previous = self.catalog();
         let names = |catalog: &Catalog| -> Vec<String> {
@@ -172,7 +176,7 @@ impl Shared {
             })
             .collect();
 
-        self.slots.resync(&parsed);
+        self.slots.resync(&mut admission, &parsed);
         *self.catalog.write().unwrap_or_else(PoisonError::into_inner) = Arc::new(parsed);
         drop(admission);
 

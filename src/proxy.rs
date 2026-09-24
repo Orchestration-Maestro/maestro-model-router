@@ -121,6 +121,8 @@ impl Router {
                 resident_failures: Mutex::new(Vec::new()),
                 idle_window: limits.idle_window,
                 access: limits.access,
+                stall: limits.stall,
+                permits: listen::Permits::new(limits.connections),
                 stop: Stop::new(),
             }),
         })
@@ -136,6 +138,12 @@ impl Router {
     #[must_use]
     pub fn loaded(&self) -> Vec<String> {
         self.shared.slots.loaded_ids(&self.shared.catalog())
+    }
+
+    /// How many requests are waiting in line for room right now.
+    #[must_use]
+    pub fn waiting(&self) -> usize {
+        self.shared.slots.waiting()
     }
 
     /// Residents the startup loader could not load, as `id: reason`.

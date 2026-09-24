@@ -175,6 +175,26 @@ const ACCEPTED: &[(&str, &str)] = &[
          tests calling `serving` are spared from naming.",
     ),
     (
+        "windowed <-> impatient",
+        "The same family as windowed <-> queued: one setting stated over a \
+         budget -- here how long a caller may make no progress -- and the \
+         rest left open. A merged function would make every stall test \
+         say it has no window, and every idle-unload test that it has no \
+         stall.",
+    ),
+    (
+        "queued <-> impatient",
+        "The same family again: a wait for room, or a stall, each stated over \
+         a budget. Merged, every queueing test would state a stall it is not \
+         about, and every stall test a wait.",
+    ),
+    (
+        "probed <-> impatient",
+        "The same family again: a probed machine, or a stall, each stated \
+         over a budget. Merged, every probe test would state a stall it is \
+         not about, and every stall test a machine.",
+    ),
+    (
         "windowed <-> queued",
         "Both state one setting over a budget -- an idle window, or how long \
          a request waits for room -- and are otherwise the same delegation. \

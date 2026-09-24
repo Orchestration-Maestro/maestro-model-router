@@ -21,26 +21,32 @@ use super::refusal::{Cause, Refusal};
 use super::{Shared, body, head, relay, reply};
 
 /// Answers one connection.
-pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> {
-    let mut reader = BufReader::new(stream.try_clone()?);
+pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
+    // A caller that sends none of its request, or reads none of its answer,
+    // for this long is given up on: the watch sees a caller leave, not one
+    // that stays and does nothing. Set on the socket, so the clone the head
+    // is read through and every write of the answer carry it.
+    drop(stream.set_read_timeout(Some(shared.stall)));
+    drop(stream.set_write_timeout(Some(shared.stall)));
+    let mut reader = BufReader::new(stream);
 
     let lines = match head::read(&mut reader) {
         Ok(lines) => lines,
-        Err(refusal) => return reply::refuse(&mut stream, &refusal),
+        Err(refusal) => return reply::refuse(stream, &refusal),
     };
     let request = match head::parse(&lines) {
         Ok(request) => request,
-        Err(refusal) => return reply::refuse(&mut stream, &refusal),
+        Err(refusal) => return reply::refuse(stream, &refusal),
     };
     if let Err(refusal) = shared.access.admits(&request) {
-        return reply::refuse(&mut stream, &refusal);
+        return reply::refuse(stream, &refusal);
     }
 
     // A preflight asks what is allowed, which the router knows without
     // asking a child. Answered before framing is checked: a preflight has no
     // body, and one that declared something odd is still a preflight.
     if request.method == "OPTIONS" {
-        return reply::preflight(&mut stream, &request.endpoint);
+        return reply::preflight(stream, &request.endpoint);
     }
 
     // Before anything else that could start a child. A method no model can
@@ -49,7 +55,7 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     if !request.endpoint.allows(&request.method) {
         let allowed = request.endpoint.allowed();
         return reply::refuse(
-            &mut stream,
+            stream,
             &Refusal::new(
                 Cause::MethodNotAllowed(allowed),
                 format!(
@@ -64,7 +70,7 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     // this router cannot frame is one it will not serve whatever it names, so
     // deciding that here costs neither a body nor a model load.
     if let Err(refusal) = framing(&request) {
-        return reply::refuse(&mut stream, &refusal);
+        return reply::refuse(stream, &refusal);
     }
 
     // The router's own answers, settled before anything is read from the body
@@ -76,13 +82,13 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     // them it asked.
     let head_only = request.method == "HEAD";
     match request.endpoint {
-        Endpoint::Listing => return reply::listing(&mut stream, shared, head_only),
-        Endpoint::Catalogue => return own::catalogue(&mut stream, shared, head_only),
-        Endpoint::Properties => return own::properties(&mut stream, head_only),
+        Endpoint::Listing => return reply::listing(stream, shared, head_only),
+        Endpoint::Catalogue => return own::catalogue(stream, shared, head_only),
+        Endpoint::Properties => return own::properties(stream, head_only),
         // Answered here with the rest of the router's own paths, and for the
         // same reason: no child is involved. It is the one of them that
         // changes something, which is why it is the one that takes `POST`.
-        Endpoint::Reload => return own::reload(&mut stream, shared),
+        Endpoint::Reload => return own::reload(stream, shared),
         Endpoint::Dedicated { .. } | Endpoint::Generic { .. } => {}
     }
 
@@ -97,16 +103,16 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
         Endpoint::Generic { .. } => {
             let declared = match declared_body(&request.length) {
                 Ok(declared) => declared,
-                Err(refusal) => return reply::refuse(&mut stream, &refusal),
+                Err(refusal) => return reply::refuse(stream, &refusal),
             };
             // Told to send now and not before: a body refused for its length
             // is one the caller was spared sending.
             if request.expects_continue {
-                reply::proceed(&mut stream)?;
+                reply::proceed(stream)?;
             }
             match body::read(&mut reader, declared) {
                 Ok((bytes, model)) => (model, Some(bytes)),
-                Err(refusal) => return reply::refuse(&mut stream, &refusal),
+                Err(refusal) => return reply::refuse(stream, &refusal),
             }
         }
     };
@@ -114,7 +120,7 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     let catalog = shared.catalog();
     let Some(entry) = catalog.entry(&wanted) else {
         return reply::refuse(
-            &mut stream,
+            stream,
             &Refusal::new(
                 Cause::ModelNotFound,
                 format!(
@@ -130,7 +136,7 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     // load-bearing interface.
     let child = match shared.child(entry) {
         Ok(child) => child,
-        Err(failure) => return reply::refuse(&mut stream, &Refusal::from(failure)),
+        Err(failure) => return reply::refuse(stream, &Refusal::from(failure)),
     };
 
     // The dedicated endpoint reads the body only now, to hand it to a child
@@ -140,7 +146,7 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     // body is on the socket either way, and the interim line is ignored by a
     // client that stopped waiting for it.
     if buffered.is_none() && request.expects_continue && request.body_bytes() > 0 {
-        reply::proceed(&mut stream)?;
+        reply::proceed(stream)?;
     }
 
     // The relay is timed by when it ends rather than when it started, so a
@@ -149,13 +155,7 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
     // scope while this runs, which is load-bearing: its `Arc` keeps the
     // slot's strong count at two or more, so no sweep can empty it between
     // the relay ending and the touch landing.
-    let outcome = relay::run(
-        &request,
-        &child,
-        buffered.as_deref(),
-        &mut reader,
-        &mut stream,
-    );
+    let outcome = relay::run(&request, &child, buffered.as_deref(), &mut reader, stream);
     shared.slots.touch(&entry.id);
     outcome
 }

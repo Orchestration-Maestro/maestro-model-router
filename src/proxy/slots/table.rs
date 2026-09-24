@@ -8,12 +8,12 @@
 //! those rules are here: who may add a key, who may drop one, and the lock
 //! order every reader keeps.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::catalog::Catalog;
 
 use super::super::loaded::Slot;
-use super::Slots;
+use super::{Queue, Slots};
 
 impl Slots {
     pub(in super::super) fn clear(&self) {
@@ -32,7 +32,7 @@ impl Slots {
     /// Reload takes this: swapping the catalog while a load is deciding
     /// against the old one would admit an entry under one set of numbers and
     /// insert it under another.
-    pub(in super::super) fn admitting(&self) -> std::sync::MutexGuard<'_, ()> {
+    pub(in super::super) fn admitting(&self) -> MutexGuard<'_, Queue> {
         self.admission
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -47,8 +47,16 @@ impl Slots {
     /// an eviction empties it, and until then the entry is gone from the
     /// catalog while its process is not, which `reload` reports.
     ///
-    /// The caller holds the admission lock. Nothing here takes it.
-    pub(in super::super) fn resync(&self, catalog: &Catalog) {
+    /// The caller holds the admission lock, and hands it in: a request that
+    /// waited for room through this is told so when it next looks, and is
+    /// rung for so that it looks at once.
+    pub(in super::super) fn resync(
+        &self,
+        admitting: &mut MutexGuard<'_, Queue>,
+        catalog: &Catalog,
+    ) {
+        admitting.reloads += 1;
+        self.freed.ring();
         let mut by_id = self.by_id.write().unwrap_or_else(PoisonError::into_inner);
         for entry in &catalog.entries {
             by_id

@@ -126,9 +126,33 @@ ended. This is measured with a monotonic clock, so it does not advance while
 the machine is suspended: a laptop that sleeps for eight hours wakes holding
 whatever it was holding when it slept.
 
+### How long a request waits for room
+
+| Source | Value |
+| --- | --- |
+| `MAESTRO_ADMISSION_WAIT_SECONDS` | the wait in whole seconds, when set and not empty; `0` refuses at once |
+| otherwise | a minute |
+
+When the only room a model could take is held by a model something is still
+reading from, the request waits for that reader to finish rather than being
+refused, for as long as this allows. Waiting requests take the room in the
+order they asked for it, and look again the moment a model is let go rather
+than on a timer. A request whose model fits outright is not held behind them.
+A reload while a request waits tells it to ask again, which a retry does under
+the catalog now serving.
+
 The server binary is located rather than bundled: `llama-server` is taken from
 the search path, with the platform's executable suffix, so no tracked file
 names one machine.
+
+### What one caller can hold
+
+A caller that sends none of its request, or reads none of its answer, for a
+minute is let go: an idle connection is answered `408`, and one that stopped
+reading releases the model it was holding -- the router watches for a caller
+that leaves, and this is the one that stays and does nothing. At most 256
+connections are answered at once; more wait in the operating system's backlog
+until one ends.
 
 ### Who may use it
 
@@ -281,6 +305,12 @@ qwen3-06b: loading, estimated at 1024 MiB
 qwen3-06b: ready in 5.4 s, measured 4.5 GiB resident and 0.7 GiB on the device (catalog said 1024 MiB)
 ```
 
+Where the driver reports nothing per process -- WSL's does not -- the device
+figure is how far the device's free memory fell while the model loaded. Loads
+are admitted one at a time, so nothing else the router starts moves it
+meanwhile; anything else on the machine that allocates at that moment is
+counted too, which errs toward counting a model high.
+
 The device is the second question, asked at the moment of the decision for
 what it has free right now. That counts everything on the machine, not only
 what this router loaded, so a desktop that grew since the budget was set is
@@ -311,7 +341,8 @@ gemma3: loading, estimated at 2048 MiB
 A model is never unloaded while something is reading from it. Killing a child
 mid-answer would truncate the stream, which a caller cannot tell apart from a
 model that finished early. When the only model that could be unloaded is busy,
-the request is refused instead. That is checked at the moment a model is taken
+the request waits for it as long as `MAESTRO_ADMISSION_WAIT_SECONDS` allows,
+and is refused if the room is still held then. That is checked at the moment a model is taken
 out, not only when the decision is made: a request can arrive in between, and
 emptying the slot then would leave a process running that the budget no longer
 counts.
@@ -408,6 +439,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | the head is larger than the router will read | `431` | `request_head_too_large` |
 | `MAESTRO_API_KEY` is set and the request carries no key, or another | `401`, with `WWW-Authenticate: Bearer` | `invalid_api_key` |
 | `MAESTRO_ALLOWED_ORIGINS` is set and does not list the request's origin | `403` | `origin_not_allowed` |
+| the request head did not arrive within a minute | `408` | `request_timeout` |
 | the path is no shape the router serves | `404` | `path_not_found` |
 | the path or body names no entry the catalog carries | `404`, listing what it does carry | `model_not_found` |
 | the method is none a model is asked anything with | `405`, with `Allow` | `method_not_allowed` |

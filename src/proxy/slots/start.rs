@@ -49,6 +49,7 @@ impl Slots {
             "{}: loading, estimated at {} MiB",
             entry.id, entry.memory_estimate_mib
         ));
+        let free_before = self.budget.probe().device().map(|device| device.free_mib());
         let started = Instant::now();
         let child = match server.start(entry, root) {
             Ok(child) => child,
@@ -57,13 +58,42 @@ impl Slots {
                 return Err(failure);
             }
         };
-        let measured = self.budget.probe().measure(child.pid());
+        let measured = on_the_device(
+            self.budget.probe().measure(child.pid()),
+            free_before,
+            self.budget.probe().device().map(|device| device.free_mib()),
+        );
         say(&ready(entry, started.elapsed(), &measured));
         Ok(Loaded {
             child: Arc::new(child),
             last_used: Instant::now(),
             measured,
         })
+    }
+}
+
+/// What a child holds on the device, including when the device cannot say.
+///
+/// A driver that reports nothing per process -- WSL's, on the machine this
+/// router was written for -- left every model counted at its estimate. How
+/// far the device's free memory fell while the child loaded says instead,
+/// and is sound because loads are admitted one at a time: nothing else this
+/// router starts moves the figure meanwhile. Anything else on the machine that
+/// allocates at the same moment is counted too, and a model counted high is
+/// the safe error. A figure the device reports per process is kept, being the
+/// child's alone.
+fn on_the_device(
+    measured: Measurement,
+    free_before: Option<u64>,
+    free_after: Option<u64>,
+) -> Measurement {
+    let fell = free_before
+        .zip(free_after)
+        .and_then(|(before, after)| before.checked_sub(after))
+        .filter(|fell| *fell > 0);
+    Measurement {
+        device_mib: measured.device_mib.or(fell),
+        ..measured
     }
 }
 
@@ -139,6 +169,56 @@ mod tests {
             "qwen3-06b: ready in 5.4 s, measured 4.5 GiB resident and 0.7 GiB \
              on the device (catalog said 1024 MiB)"
         );
+    }
+
+    /// What this machine's driver answers: a resident set, and nothing per
+    /// process on the device.
+    const UNREAD_ON_THE_DEVICE: Measurement = Measurement {
+        resident_mib: Some(900),
+        device_mib: None,
+    };
+
+    #[test]
+    fn a_device_that_cannot_say_per_process_is_read_by_how_far_its_free_memory_fell() {
+        assert_eq!(
+            on_the_device(UNREAD_ON_THE_DEVICE, Some(31_000), Some(2_000)),
+            Measurement {
+                resident_mib: Some(900),
+                device_mib: Some(29_000),
+            },
+            "a model that took 29000 MiB of the card is counted at that, not \
+             at the 900 MiB its process shows resident"
+        );
+    }
+
+    #[test]
+    fn what_the_device_says_per_process_is_kept_over_what_its_free_memory_did() {
+        let per_process = Measurement {
+            resident_mib: Some(900),
+            device_mib: Some(28_000),
+        };
+        assert_eq!(
+            on_the_device(per_process, Some(31_000), Some(2_000)),
+            per_process,
+            "a figure that is the child's alone beats one that is the card's"
+        );
+    }
+
+    #[test]
+    fn free_memory_that_did_not_fall_or_could_not_be_read_says_nothing() {
+        for (before, after) in [
+            (Some(2_000), Some(2_000)),
+            (Some(2_000), Some(3_000)),
+            (None, Some(2_000)),
+            (Some(2_000), None),
+        ] {
+            assert_eq!(
+                on_the_device(UNREAD_ON_THE_DEVICE, before, after),
+                UNREAD_ON_THE_DEVICE,
+                "free memory of {before:?} then {after:?} says nothing about \
+                 what the child took"
+            );
+        }
     }
 
     #[test]

@@ -208,6 +208,8 @@ mod tests {
             resident_failures: Mutex::new(Vec::new()),
             idle_window: IdleWindow::new(Duration::from_secs(600)),
             access: super::super::Access::default(),
+            stall: Duration::from_secs(60),
+            permits: super::super::listen::Permits::new(1),
             stop: Stop::new(),
         });
 
