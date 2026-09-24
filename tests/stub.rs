@@ -290,6 +290,33 @@ fn a_paced_stream_arrives_spread_out_rather_than_at_once() {
 }
 
 #[test]
+fn a_first_byte_delay_keeps_the_stream_silent_until_it_passes() {
+    let port = free_port();
+    let mut running = start(&[
+        "--port",
+        &port.to_string(),
+        "--stream-events",
+        "1",
+        "--first-byte-after",
+        "400",
+    ]);
+    wait_for_listener(&mut running, port);
+
+    let (body, times) = arrivals(port, "POST /v1/chat/completions");
+
+    assert!(
+        body.contains("data: {\"n\":0}"),
+        "the event arrives:\n{body}"
+    );
+    let first = *times.first().expect("at least one arrival");
+    assert!(
+        first >= Duration::from_millis(350),
+        "nothing arrives before the delay has passed, the way a model \
+         reading a long prompt says nothing; the first byte came at {first:?}"
+    );
+}
+
+#[test]
 fn die_after_events_truncates_the_stream() {
     let port = free_port();
     let mut running = start(&[

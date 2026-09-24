@@ -147,6 +147,32 @@ fn a_child_that_exits_while_loading_fails_with_its_status_not_the_budget() {
     );
 }
 
+/// A child that dies while loading says why on its way out -- a model file it
+/// cannot read, a card it cannot fit -- and the failure carries that, rather
+/// than an exit status alone and an output nobody kept.
+#[test]
+fn a_child_that_exits_while_loading_reports_what_it_said_last() {
+    let root = ModelsRoot::with(&[MODEL]);
+    let mut entry = entry("crasher");
+    entry
+        .flags
+        .insert("ready-after".to_owned(), "600000".to_owned());
+    entry
+        .flags
+        .insert("exit-after".to_owned(), "250".to_owned());
+    entry.flags.insert("exit-code".to_owned(), "9".to_owned());
+
+    let failure = server()
+        .start(&entry, root.path())
+        .expect_err("a child that dies never becomes ready")
+        .to_string();
+
+    assert!(
+        failure.contains("exiting with code 9 after 250 ms, as asked"),
+        "the failure carries the child's last words:\n{failure}"
+    );
+}
+
 /// `free_port` releases a port before the child binds it; under enough
 /// concurrent spawns something else takes it first, and the child exits on
 /// its own first bind attempt without ever being reachable. The

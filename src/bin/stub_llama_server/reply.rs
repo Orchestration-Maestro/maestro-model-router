@@ -31,6 +31,9 @@ const HEAD_LIMIT: usize = 64 * 1024;
 
 /// How the stub was asked to pace a stream.
 pub struct Pacing {
+    /// How long a stream stays silent before its first byte, the way a model
+    /// reading a long prompt says nothing at all.
+    pub first_byte_after: Duration,
     /// How many events a full stream carries.
     pub events: usize,
     /// How long to wait before each one.
@@ -171,6 +174,7 @@ fn serve_complete(
 /// make the router's streaming test vacuous: the events would arrive together
 /// whatever the relay did with them.
 fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> std::io::Result<()> {
+    thread::sleep(pacing.first_byte_after);
     write!(
         stream,
         "HTTP/1.1 200 OK\r\n\

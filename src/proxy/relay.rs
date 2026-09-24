@@ -15,8 +15,12 @@
 //! its mind would trade the property this slice exists for against a nicer
 //! message.
 
-use std::io::{BufReader, Read, Write};
-use std::net::TcpStream;
+use std::io::{BufReader, ErrorKind, Read, Write};
+use std::net::{Shutdown, TcpStream};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use super::head::Head;
 use crate::launch::Child;
@@ -91,13 +95,80 @@ fn forward_body(
     Ok(())
 }
 
+/// How often the watch on a caller looks up to see whether the relay ended.
+///
+/// Also how long a finished relay can wait for its watch to notice, which is
+/// why it is short: the reply has been written by then, so nothing waits on
+/// it but a thread.
+const WATCH: Duration = Duration::from_millis(100);
+
 /// Copies the response until the child closes, flushing after every read.
 ///
 /// The flush is the whole slice. A buffered writer that flushed when its
 /// buffer filled would batch a stream into one delivery, and the reply text
 /// would be identical either way -- which is why `tests/streaming.rs` asserts
 /// when bytes arrive rather than what they say.
+///
+/// The caller is watched while this runs. A write that fails tells the relay
+/// its caller left, but only once there is something to write, and a model
+/// reading a long prompt or finishing a reply it does not stream writes
+/// nothing for minutes. Without the watch, such a model stayed busy and kept
+/// generating for nobody until it spoke.
 fn copy_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
+    let relaying = Arc::new(AtomicBool::new(true));
+    let watch = watch(downstream, upstream, &relaying);
+    relay_response(upstream, downstream);
+    relaying.store(false, Ordering::Relaxed);
+    // Ends the caller's connection now rather than when the last handle on it
+    // goes, and wakes the watch where the platform lets a shutdown do that.
+    drop(downstream.shutdown(Shutdown::Both));
+    if let Some(watch) = watch {
+        drop(watch.join());
+    }
+}
+
+/// Watches the caller's side of the connection while a response is relayed,
+/// and closes the child's side when the caller leaves.
+///
+/// A caller that closes its end is gone: `llama-server` reads it the same way,
+/// and closing the child's connection is how it is told to stop generating.
+/// Bytes a caller sends after its request are not this router's to read --
+/// every connection answers one request -- and are dropped.
+///
+/// `None` when the sockets cannot be duplicated, in which case the relay runs
+/// as it did before the watch existed: a caller that leaves is noticed on the
+/// next write.
+fn watch(
+    downstream: &TcpStream,
+    upstream: &TcpStream,
+    relaying: &Arc<AtomicBool>,
+) -> Option<JoinHandle<()>> {
+    let caller = downstream.try_clone().ok()?;
+    let child = upstream.try_clone().ok()?;
+    caller.set_read_timeout(Some(WATCH)).ok()?;
+    let relaying = Arc::clone(relaying);
+    Some(thread::spawn(move || {
+        let mut byte = [0u8; 1];
+        while relaying.load(Ordering::Relaxed) {
+            match (&caller).read(&mut byte) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                    ) => {}
+                Err(_) => break,
+            }
+        }
+        if relaying.load(Ordering::Relaxed) {
+            drop(child.shutdown(Shutdown::Both));
+        }
+    }))
+}
+
+/// The copy itself: every read written and flushed before the next.
+fn relay_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
     let mut buffer = [0u8; BUFFER];
     loop {
         // End-of-file and a broken upstream are one arm because they are one

@@ -47,7 +47,7 @@ setup:
     prek install --install-hooks
 
 # The quality commands rust-workflows' CI runs, with its flags: Clippy with the
-# scaffolding and `unsafe` denied, strict rustdoc, the 80% coverage floor. CI
+# scaffolding and `unsafe` denied, strict rustdoc, the 90% coverage floor. CI
 # also runs what needs its own runners or the network: the other platforms,
 # the release build, the SBOMs, the secret scan and mutation testing.
 
@@ -58,7 +58,7 @@ check:
     cargo test --workspace --all-targets --locked
     cargo test --workspace --doc --locked
     RUSTDOCFLAGS='-D warnings -D missing_docs' cargo doc --workspace --no-deps --locked
-    cargo llvm-cov --workspace --locked --fail-under-lines 80 --summary-only
+    cargo llvm-cov --workspace --locked --fail-under-lines 90 --summary-only
     cargo machete
     cargo deny check
 

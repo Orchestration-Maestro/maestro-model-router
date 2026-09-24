@@ -228,14 +228,47 @@ fn one_entry_reports_all_of_its_own_faults() {
 /// against fiction.
 const CARD_MIB: u64 = 32_607;
 
+/// The catalog that ships with this repository, parsed.
+fn shipped() -> Catalog {
+    let shipped = concat!(env!("CARGO_MANIFEST_DIR"), "/catalog.toml");
+    let text = std::fs::read_to_string(shipped).expect("catalog.toml ships with this repository");
+    Catalog::parse(&text).unwrap_or_else(|report| {
+        panic!("the shipped catalog must be valid:\n{report}");
+    })
+}
+
+/// A model caught in a repetition loop generates until its context is full --
+/// 196,608 tokens for the largest entry, over an hour of a card nobody else
+/// can use -- because `llama-server` caps nothing unless told to. Every entry
+/// that generates text carries a cap, so a loop ends on its own; a client that
+/// wants a longer answer asks for it with `max_tokens`.
+#[test]
+fn every_generating_entry_of_the_shipped_catalog_caps_its_answer() {
+    let catalog = shipped();
+    let uncapped: Vec<&str> = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.generates())
+        .filter(|entry| {
+            !["n-predict", "predict", "n"].iter().any(|flag| {
+                entry
+                    .flags
+                    .get(*flag)
+                    .is_some_and(|value| value.trim().parse::<u32>().is_ok_and(|cap| cap > 0))
+            })
+        })
+        .map(|entry| entry.id.as_str())
+        .collect();
+    assert!(
+        uncapped.is_empty(),
+        "these entries generate with no cap on an answer's length: {uncapped:?}"
+    );
+}
+
 /// The file that ships cannot rot away from the parser that reads it.
 #[test]
 fn the_shipped_catalog_is_valid() {
-    let shipped = concat!(env!("CARGO_MANIFEST_DIR"), "/catalog.toml");
-    let text = std::fs::read_to_string(shipped).expect("catalog.toml ships with this repository");
-    let catalog = Catalog::parse(&text).unwrap_or_else(|report| {
-        panic!("the shipped catalog must be valid:\n{report}");
-    });
+    let catalog = shipped();
     // What a resident reserves is never evicted, so the largest entry has to
     // fit in what is left *after* the reservation -- not merely inside the
     // budget. This catalog once held a 1 GiB steward resident beside a 29,184

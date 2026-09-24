@@ -125,7 +125,7 @@ gh pr merge --squash --delete-branch
 
 Locally, hooks run formatting and lint at commit time and the rest before a
 push. In CI, `rust / Required Rust CI` from `rust-workflows` blocks the merge:
-formatting, Clippy, tests on three platforms, strict rustdoc, 80% line
+formatting, Clippy, tests on three platforms, strict rustdoc, 90% line
 coverage, advisories, a secret scan, the declared Rust version, a
 reproducible release build and mutation testing of the change. The full
 eviction sweep runs weekly and reports.
