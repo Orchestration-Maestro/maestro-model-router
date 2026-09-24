@@ -281,6 +281,12 @@ qwen3-06b: loading, estimated at 1024 MiB
 qwen3-06b: ready in 5.4 s, measured 4.5 GiB resident and 0.7 GiB on the device (catalog said 1024 MiB)
 ```
 
+Where the driver reports nothing per process -- WSL's does not -- the device
+figure is how far the device's free memory fell while the model loaded. Loads
+are admitted one at a time, so nothing else the router starts moves it
+meanwhile; anything else on the machine that allocates at that moment is
+counted too, which errs toward counting a model high.
+
 The device is the second question, asked at the moment of the decision for
 what it has free right now. That counts everything on the machine, not only
 what this router loaded, so a desktop that grew since the budget was set is
