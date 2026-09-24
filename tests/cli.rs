@@ -54,6 +54,20 @@ fn a_command_nobody_knows_is_answered_with_the_usage() {
 }
 
 #[test]
+fn the_version_names_the_release_and_the_commit_it_was_built_from() {
+    let output = model_router(&["--version"], Path::new(NOWHERE));
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    let said = text(&output.stdout);
+    assert!(
+        said.starts_with(&format!("model-router {} (", env!("CARGO_PKG_VERSION")))
+            && said.trim_end().ends_with(')'),
+        "the release, then the commit in brackets -- 'unrecorded' when the \
+         build was not told one -- so a running router can be traced to its \
+         source:\n{said}"
+    );
+}
+
+#[test]
 fn check_counts_the_models_a_usable_catalog_carries_against_its_root() {
     let root = ModelsRoot::with(&[MODEL]);
     let catalog = written(&root, &catalog_text(""));

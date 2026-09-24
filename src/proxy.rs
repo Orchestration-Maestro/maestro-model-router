@@ -77,6 +77,7 @@ mod residents;
 mod shared;
 mod slots;
 
+pub use listen::{ASSIGNED_WITHIN, await_assigned};
 use reaper::Stop;
 use shared::Shared;
 pub use shared::Source;

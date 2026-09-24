@@ -160,6 +160,14 @@ const ACCEPTED: &[(&str, &str)] = &[
          named converters exists to avoid.",
     ),
     (
+        "properties <-> reload",
+        "Both write one JSON object through `reply::json`, and that call is \
+         the whole of what they share. What each says does not overlap -- the \
+         server's capability and build, against what a reload changed -- and \
+         a merged writer would take the object as a parameter, which is what \
+         `reply::json` already is.",
+    ),
+    (
         "entry <-> line",
         "Two fixtures in `invocation.rs` matched on shape and nothing else: \
          one builds an `Entry` literal, the other maps `of`'s output to \

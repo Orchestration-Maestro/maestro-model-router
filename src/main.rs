@@ -1,13 +1,9 @@
-//! The `model-router` binary.
+//! The `model-router` binary: check a catalog, measure its entries, launch
+//! one, or serve them all, and say which build is doing it.
 //!
-//! Two things so far: read a catalog and say whether it is usable, and take
-//! one entry from it as far as a running server that answers. Routing comes
-//! with the later slices, and until then a command that pretended to would be
-//! worse than none.
-//!
-//! Argument handling is hand-written. Two subcommands taking two operands do
-//! not earn a dependency, and the dependency would have to be justified to
-//! the same gates as a real one.
+//! Argument handling is hand-written. A handful of subcommands taking two or
+//! three operands do not earn a dependency, and the dependency would have to
+//! be justified to the same gates as a real one.
 
 use std::fs;
 use std::net::SocketAddr;
@@ -21,14 +17,15 @@ use maestro_model_router::admission::Budget;
 use maestro_model_router::catalog::Catalog;
 use maestro_model_router::idle::{IdleWindow, Limits};
 use maestro_model_router::launch::{Server, models_root};
-use maestro_model_router::proxy::Router;
+use maestro_model_router::proxy::{ASSIGNED_WITHIN, Router};
 use maestro_model_router::queue::Wait;
 use maestro_model_router::{bench, startup};
 
 const USAGE: &str = "usage: model-router check <catalog>\n       \
                      model-router bench <catalog> [model]\n       \
                      model-router launch <catalog> <model>\n       \
-                     model-router serve <catalog> [address[,address...]]";
+                     model-router serve <catalog> [address[,address...]]\n       \
+                     model-router --version";
 
 /// The one public port the design names, on the interface every machine has.
 const DEFAULT_ADDRESS: &str = "127.0.0.1:8080";
@@ -38,6 +35,10 @@ mod check;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
+        [flag] if flag == "--version" || flag == "-V" => {
+            println!("{}", maestro_model_router::build::described());
+            ExitCode::SUCCESS
+        }
         [command, catalog] if command == "check" => check::check(Path::new(catalog)),
         // Whole catalog or one entry. `check` reads the files and reasons; this
         // starts each entry and reads the card, which is the only way to tell
@@ -110,6 +111,7 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
         catalog: parsed,
         path: catalog.to_path_buf(),
     };
+    maestro_model_router::proxy::await_assigned(&wanted, ASSIGNED_WITHIN);
     let router = Router::bind(&wanted, source, root, server, limits).map_err(|f| f.to_string())?;
     let router = Arc::new(router);
     for address in router.addresses() {
@@ -129,6 +131,7 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
     }
     println!("{}", startup::idle_window(idle_seconds));
     println!("a streamed reply is passed through as it arrives");
+    println!("{}", maestro_model_router::build::described());
 
     // Registered after the bind and before anything can start a child: a
     // signal before this point ends a router that has nothing to stop.

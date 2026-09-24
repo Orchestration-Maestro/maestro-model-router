@@ -18,10 +18,9 @@ export PATH := home_directory() / ".cargo" / "bin" + path_sep + home_directory()
 # on anything else leaves systemd's idea of the service and the process that
 # is actually running disagreeing with each other.
 #
-# `reload` and `serving` are the two recipes in this file that are not
-# cross-platform, and they are the two that are not about building: they act
-# on a running service, which on this machine is a systemd user unit. Every
-# gate above them runs anywhere.
+# `reload`, `serving` and `deploy` are the recipes in this file that are not
+# cross-platform: they act on a running service, which on this machine is a
+# systemd user unit. Every gate above them runs anywhere.
 unit := "model-router"
 
 # First in the file, deliberately: `just` with no arguments runs the first
@@ -98,6 +97,41 @@ reload:
 # a pipeline that ends in `sed` reports the exit status of `sed`, which
 # succeeds on no input -- so `|| echo nothing` never fires and the caller is
 # told nothing at all instead of "nothing".
+
+# Installing from a working tree nobody committed is how a router came to run
+# code that no commit held, so this refuses one. The binary is built with its
+# commit stamped in -- `model-router --version` and `/props` report it -- and
+# the one it replaces is kept as `model-router.prev` for a rollback. The
+# restart waits until no connection is open to the router, so nothing is cut
+# off mid-answer; a loaded model loads again on its next request.
+
+# Build HEAD, install it, and restart the router once nothing is in flight.
+deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! git diff --quiet HEAD --; then
+        echo "refusing: tracked files differ from HEAD; commit first" >&2
+        exit 1
+    fi
+    commit=$(git rev-parse --short=12 HEAD)
+    MODEL_ROUTER_COMMIT="$commit" cargo build --release --locked --bin model-router
+    for _ in $(seq 600); do
+        open=$(ss -Htnp state established | grep -c '"model-router"' || true)
+        [ "$open" -eq 0 ] && break
+        sleep 1
+    done
+    if [ "$open" -ne 0 ]; then
+        echo "refusing: $open connections still open after ten minutes" >&2
+        exit 1
+    fi
+    bin="$HOME/.local/bin"
+    cp -p "$bin/model-router" "$bin/model-router.prev"
+    install -m 0755 target/release/model-router "$bin/model-router.new"
+    mv -f "$bin/model-router.new" "$bin/model-router"
+    systemctl --user restart {{unit}}
+    sleep 1
+    systemctl --user is-active {{unit}}
+    "$bin/model-router" --version
 
 # What the router is holding, before deciding whether to interrupt it.
 serving:

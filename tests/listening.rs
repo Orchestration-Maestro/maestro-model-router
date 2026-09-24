@@ -156,6 +156,37 @@ fn a_wildcard_address_is_refused_because_it_names_no_interface() {
 }
 
 #[test]
+fn an_address_no_interface_holds_yet_is_waited_for_as_long_as_it_is_given() {
+    // TEST-NET-1 is on no interface here, and stands in for a bridge that
+    // comes up a moment after the router at boot. The router waits for it
+    // rather than failing at once and leaving a service manager to retry --
+    // which gives up after five restarts in ten seconds, taking loopback down
+    // with the bridge.
+    let address: SocketAddr = "192.0.2.1:0".parse().expect("an address");
+    let started = std::time::Instant::now();
+    maestro_model_router::proxy::await_assigned(&[address], std::time::Duration::from_millis(400));
+    let waited = started.elapsed();
+    assert!(
+        waited >= std::time::Duration::from_millis(400),
+        "the address was waited for, as long as it was given; waited {waited:?}"
+    );
+    assert!(
+        waited < std::time::Duration::from_secs(5),
+        "and no longer, so a router whose address never comes still says so: {waited:?}"
+    );
+}
+
+#[test]
+fn an_address_that_can_be_bound_is_not_waited_for() {
+    let started = std::time::Instant::now();
+    maestro_model_router::proxy::await_assigned(&[ephemeral()], std::time::Duration::from_secs(30));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "a loopback address binds at once, and startup does not wait on it"
+    );
+}
+
+#[test]
 fn an_address_this_router_does_not_hold_is_the_systems_refusal_not_its_own() {
     let root = ModelsRoot::with(&[MODEL]);
 
