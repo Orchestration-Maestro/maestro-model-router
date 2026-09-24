@@ -137,6 +137,12 @@ fn copy_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
 /// Bytes a caller sends after its request are not this router's to read --
 /// every connection answers one request -- and are dropped.
 ///
+/// Closing the child's side also wakes the relay's read on Linux and macOS.
+/// Windows does not wake a read blocked on a socket that is shut down
+/// (rust-lang/rust#121594), so there the relay ends when the child closes the
+/// connection in turn, which `llama-server` does once it next looks -- about
+/// once a second.
+///
 /// `None` when the sockets cannot be duplicated, in which case the relay runs
 /// as it did before the watch existed: a caller that leaves is noticed on the
 /// next write.

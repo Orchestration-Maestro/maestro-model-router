@@ -245,7 +245,8 @@ fn arrivals(port: u16, request_line: &str) -> (String, Vec<Duration>) {
         "{request_line} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
     )
     .expect("write");
-    stream.shutdown(Shutdown::Write).expect("shutdown");
+    // Not half-closed: to a silent stub, as to `llama-server`, a client that
+    // closes its end is one that left.
 
     let started = Instant::now();
     let mut body = String::new();
@@ -297,6 +298,49 @@ fn a_first_byte_delay_keeps_the_stream_silent_until_it_passes() {
         first >= Duration::from_millis(350),
         "nothing arrives before the delay has passed, the way a model \
          reading a long prompt says nothing; the first byte came at {first:?}"
+    );
+}
+
+#[test]
+fn a_client_that_leaves_during_the_silence_is_noticed_before_it_ends() {
+    // llama-server looks for a closed connection while a request is in
+    // progress, and cancels the request when it finds one. Where the router
+    // cannot wake its own blocked read -- Windows cannot -- that is how a
+    // model whose caller hung up is released at all, so a stub that noticed
+    // only on its first write would hold the model for the whole silence.
+    let marker = std::env::temp_dir().join(format!(
+        "model-router-silent-hangup-marker-{}",
+        std::process::id()
+    ));
+    drop(std::fs::remove_file(&marker));
+    let marker_text = marker.display().to_string();
+    let (_running, port, _) = serving(&[
+        "--stream-events",
+        "1",
+        "--first-byte-after",
+        "10000",
+        "--hangup-marker",
+        &marker_text,
+    ]);
+
+    let mut client = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    client
+        .write_all(
+            b"POST /v1/chat/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+        )
+        .expect("the request, written");
+    drop(client);
+
+    let left = Instant::now();
+    while !marker.exists() && left.elapsed() < Duration::from_secs(3) {
+        sleep(Duration::from_millis(25));
+    }
+    let noticed = marker.exists();
+    drop(std::fs::remove_file(&marker));
+    assert!(
+        noticed,
+        "the stub noticed its client leave within three seconds of a \
+         ten-second silence"
     );
 }
 

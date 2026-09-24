@@ -386,7 +386,9 @@ A caller that hangs up closes the connection to the child, which is how
 `llama-server` is told to stop generating -- mid-answer, and while the model is
 still silent: reading a long prompt, or finishing a reply it does not stream.
 The router watches the caller as well as the child, so a caller that gives up
-releases the model at once rather than when it next speaks.
+releases the model at once rather than when it next speaks. On Windows, where a
+shutdown does not wake a blocked read, it is released once the child closes the
+connection in turn, which `llama-server` checks for about once a second.
 
 Every refusal happens before anything is forwarded, and is the JSON envelope
 an OpenAI-compatible client already parses:
