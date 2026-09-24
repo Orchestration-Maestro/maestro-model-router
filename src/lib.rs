@@ -12,10 +12,12 @@
 //! can reach. `memory` is here because a test states the figures a machine
 //! would report, and a probe it cannot build is a probe it cannot state.
 //! `gguf` is here because the tests write files in that format and read them
-//! back through the same code the catalog derives from.
+//! back through the same code the catalog derives from. `build` is here
+//! because the binary prints it and `/props` reports it.
 
 pub mod admission;
 pub mod bench;
+pub mod build;
 pub mod catalog;
 pub mod gguf;
 pub mod idle;

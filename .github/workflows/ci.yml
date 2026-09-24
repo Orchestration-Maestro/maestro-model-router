@@ -16,10 +16,8 @@ jobs:
       # The router claims Windows, macOS and Linux, so every pull request
       # tests all three; AGENTS.md says why the claim matters here.
       platforms: macos windows
-      # Off for the import pull request alone: its diff is the whole
-      # codebase, which outgrows the job. The next pull request removes this
-      # line, and every change after it is mutated as the default intends.
-      mutation-test: false
+      # The organization's floor is 90% of lines, above the workflow's 80.
+      coverage-threshold: 90
   # Clippy and secret-scan findings into the Security tab: the only job that
   # needs a write scope.
   sarif:

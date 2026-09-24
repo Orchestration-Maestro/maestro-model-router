@@ -112,16 +112,6 @@ const ACCEPTED: &[(&str, &str)] = &[
          what makes either of them readable.",
     ),
     (
-        "listening <-> wait_for_listener",
-        "The delegation family again: wait_for_listener is listening plus the \
-         refusal, and calls it. Both exist because the stub's readiness has \
-         two readers -- seven tests that want only the status code and would \
-         otherwise each spell the same match, and one that asserts what is \
-         reported when the child is already gone. Collapsing them leaves that \
-         outcome reachable only through a panic, which is what let a lost \
-         free_port race read as a timeout for as long as it did.",
-    ),
-    (
         "windowed <-> probed",
         "Both hand a budget and a window to the shared launch, differing only \
          in which of the two they let the caller state. A merged function \
@@ -158,6 +148,14 @@ const ACCEPTED: &[(&str, &str)] = &[
         "`as_runtime` is `as_text` plus one guard, and calls it. Collapsing \
          them means one function taking a predicate, which is what having two \
          named converters exists to avoid.",
+    ),
+    (
+        "properties <-> reload",
+        "Both write one JSON object through `reply::json`, and that call is \
+         the whole of what they share. What each says does not overlap -- the \
+         server's capability and build, against what a reload changed -- and \
+         a merged writer would take the object as a parameter, which is what \
+         `reply::json` already is.",
     ),
     (
         "entry <-> line",

@@ -92,6 +92,12 @@ fn main() -> ExitCode {
         let code = options.exit_code;
         thread::spawn(move || {
             thread::sleep(after);
+            // Said on the way out, as a server that fails to load says why:
+            // what the router keeps of a child's output is what a test reads.
+            eprintln!(
+                "stub-llama-server: exiting with code {code} after {} ms, as asked",
+                after.as_millis()
+            );
             std::process::exit(i32::from(code));
         });
     }
@@ -110,6 +116,7 @@ fn serve(listener: &TcpListener, options: &Options) -> ExitCode {
     for stream in listener.incoming().flatten() {
         let ready = started.elapsed() >= options.ready_after;
         let pacing = Pacing {
+            first_byte_after: options.pacing.first_byte_after,
             events: options.pacing.events,
             gap: options.pacing.gap,
             die_after: options.pacing.die_after,
@@ -137,6 +144,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
     let mut exit_after = None;
     let mut exit_code = 0u8;
     let mut alias = String::new();
+    let mut first_byte_after = Duration::ZERO;
     let mut events = 3usize;
     let mut gap = Duration::ZERO;
     let mut die_after = None;
@@ -161,6 +169,9 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
             }
             "--exit-code" => exit_code = number(&value()?, "--exit-code")?,
             "--alias" => alias = value()?,
+            "--first-byte-after" => {
+                first_byte_after = Duration::from_millis(number(&value()?, "--first-byte-after")?);
+            }
             "--stream-events" => events = number(&value()?, "--stream-events")?,
             "--stream-gap" => gap = Duration::from_millis(number(&value()?, "--stream-gap")?),
             "--die-after-events" => die_after = Some(number(&value()?, "--die-after-events")?),
@@ -178,6 +189,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
         exit_code,
         alias,
         pacing: Pacing {
+            first_byte_after,
             events,
             gap,
             die_after,

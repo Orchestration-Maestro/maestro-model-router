@@ -21,7 +21,11 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How often a silent stub looks for a client that left: `llama-server` looks
+/// about once a second, and this is shorter only so tests do not wait on it.
+const LOOK_AGAIN: Duration = Duration::from_millis(50);
 
 /// How large a request head this stub will read before giving up on it.
 ///
@@ -31,16 +35,20 @@ const HEAD_LIMIT: usize = 64 * 1024;
 
 /// How the stub was asked to pace a stream.
 pub struct Pacing {
+    /// How long a stream stays silent before its first byte, the way a model
+    /// reading a long prompt says nothing at all.
+    pub first_byte_after: Duration,
     /// How many events a full stream carries.
     pub events: usize,
     /// How long to wait before each one.
     pub gap: Duration,
     /// After how many events to hang up without finishing, if at all.
     pub die_after: Option<usize>,
-    /// Where to record that a write failed, if anywhere.
+    /// Where to record that the client went away, if anywhere: a write that
+    /// failed, or a closed end noticed during the silence.
     ///
-    /// A file rather than a log line, because the router spawns children with
-    /// their output discarded. It is how a test observes that the relay closed
+    /// A file rather than a log line, so a test can look for it without
+    /// reading anyone's output. It is how a test observes that the relay closed
     /// the upstream connection when its caller went away: without it, "the
     /// model stopped generating" is a claim nothing outside the stub can see.
     pub hangup_marker: Option<PathBuf>,
@@ -171,6 +179,12 @@ fn serve_complete(
 /// make the router's streaming test vacuous: the events would arrive together
 /// whatever the relay did with them.
 fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> std::io::Result<()> {
+    if !silent_for(stream, pacing.first_byte_after)? {
+        // Cancelled, as `llama-server` cancels a request whose client has
+        // closed its end: nothing is written, and the connection is dropped.
+        went_away(pacing);
+        return Ok(());
+    }
     write!(
         stream,
         "HTTP/1.1 200 OK\r\n\
@@ -186,9 +200,7 @@ fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> std::io::Result<()> 
             // The far end went away. Recorded where a test can see it, then
             // reported: this is the observable half of the router closing an
             // upstream connection whose caller hung up.
-            if let Some(marker) = &pacing.hangup_marker {
-                drop(std::fs::write(marker, b"the caller went away"));
-            }
+            went_away(pacing);
             return Err(error);
         }
         // Dropped without finishing the stream, so a caller sees the response
@@ -199,6 +211,35 @@ fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> std::io::Result<()> 
         }
     }
     Ok(())
+}
+
+/// Says nothing for `silence`, as a model reading a long prompt says nothing,
+/// looking every [`LOOK_AGAIN`] for a client that closed its end, as
+/// `llama-server` does while a request runs. `false` when one did. Anything
+/// else -- a reset, bytes after the request -- is the first write's to settle.
+fn silent_for(stream: &TcpStream, silence: Duration) -> std::io::Result<bool> {
+    let deadline = Instant::now() + silence;
+    let mut byte = [0u8; 1];
+    stream.set_nonblocking(true)?;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        if stream.peek(&mut byte).is_ok_and(|read| read == 0) {
+            return Ok(false);
+        }
+        thread::sleep(left.min(LOOK_AGAIN));
+    }
+    stream.set_nonblocking(false)?;
+    Ok(true)
+}
+
+/// Records that the client went away, where a test can see it.
+fn went_away(pacing: &Pacing) {
+    if let Some(marker) = &pacing.hangup_marker {
+        drop(std::fs::write(marker, b"the caller went away"));
+    }
 }
 
 /// One event, flushed so it leaves this process when it is produced.

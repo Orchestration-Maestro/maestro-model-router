@@ -130,6 +130,18 @@ The server binary is located rather than bundled: `llama-server` is taken from
 the search path, with the platform's executable suffix, so no tracked file
 names one machine.
 
+### Who may use it
+
+| Source | Value |
+| --- | --- |
+| `MAESTRO_API_KEY` | a key every request but a preflight carries as `Authorization: Bearer <key>`, when set and not empty |
+| `MAESTRO_ALLOWED_ORIGINS` | the browser origins that may call the router, separated by commas, when set and not empty |
+| otherwise | open to whoever reaches an address it listens on |
+
+A request naming an origin not on the list is refused before anything else
+happens; a caller that is no browser names none and is unaffected. The router
+says at startup which rules it runs under, and never prints the key.
+
 ## Serving
 
 ```sh
@@ -142,12 +154,22 @@ Binds the public port and stays up:
 serving on http://127.0.0.1:8080
   http://127.0.0.1:8080/models/<model>/v1/chat/completions
   http://127.0.0.1:8080/v1/chat/completions   (routed by the body's model)
+  POST http://127.0.0.1:8080/reload                (re-reads the catalog)
+access: no key is required (set MAESTRO_API_KEY to require one); any browser origin may call it (set MAESTRO_ALLOWED_ORIGINS to list them)
 memory budget: 25000 MiB, so models are unloaded to make room
 residents reserve 4096 MiB of 25000 MiB, leaving 20904 MiB for everything else
 idle window: 3600 seconds, so an unused on-demand model is unloaded after that long
 a streamed reply is passed through as it arrives
+model-router 0.1.0 (3f2c9a1b7e40)
 resident qwen3-4b loaded in 1.8 seconds
 ```
+
+The last line before the residents is the build: the release, and the commit
+`just deploy` stamped into it. `model-router --version` and `/props` say the
+same, so a running router can be traced to its source. A child's own output
+goes to the router's standard error, each line prefixed with its entry, so the
+service's journal keeps what a model said; a child that dies while loading is
+refused with its last lines.
 
 The reservation line is there because a resident is memory the router promises
 never to reclaim. A ceiling that covers the residents but not the largest model
@@ -230,8 +252,9 @@ the listing, because a client library that pages its model list adds one.
 Only `GET` and `POST` reach a child. A preflight (`OPTIONS`) is answered by
 the router itself -- `204`, an `Allow` header, and permissive
 `Access-Control-Allow-*` headers, which are safe for the loopback address and
-as safe as the network is for any other -- and never starts a model. Any
-other method under a model
+as safe as the network is for any other -- and never starts a model. With
+`MAESTRO_ALLOWED_ORIGINS` set, a preflight from an origin not on the list is
+refused with `403` instead. Any other method under a model
 prefix is refused with `405` before a child is involved, because the only
 thing forwarding it could achieve is a load that then answers `404`.
 
@@ -359,8 +382,13 @@ rather than a setting to get right. The request is the exception, and only on
 the generic endpoint: the model is inside the body, so the body is read. What
 is forwarded is still the caller's own bytes.
 
-A caller that hangs up mid-answer closes the connection to the child, which is
-how `llama-server` is told to stop generating.
+A caller that hangs up closes the connection to the child, which is how
+`llama-server` is told to stop generating -- mid-answer, and while the model is
+still silent: reading a long prompt, or finishing a reply it does not stream.
+The router watches the caller as well as the child, so a caller that gives up
+releases the model at once rather than when it next speaks. On Windows, where a
+shutdown does not wake a blocked read, it is released once the child closes the
+connection in turn, which `llama-server` checks for about once a second.
 
 Every refusal happens before anything is forwarded, and is the JSON envelope
 an OpenAI-compatible client already parses:
@@ -378,6 +406,8 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | --- | --- | --- |
 | the head cannot be read as a request | `400` | `malformed_request` |
 | the head is larger than the router will read | `431` | `request_head_too_large` |
+| `MAESTRO_API_KEY` is set and the request carries no key, or another | `401`, with `WWW-Authenticate: Bearer` | `invalid_api_key` |
+| `MAESTRO_ALLOWED_ORIGINS` is set and does not list the request's origin | `403` | `origin_not_allowed` |
 | the path is no shape the router serves | `404` | `path_not_found` |
 | the path or body names no entry the catalog carries | `404`, listing what it does carry | `model_not_found` |
 | the method is none a model is asked anything with | `405`, with `Allow` | `method_not_allowed` |
@@ -421,4 +451,5 @@ that point closes the connection rather than pretending it can still answer.
 just install    # the toolchain and the gate tools
 just setup      # wire the local hooks
 just check      # the quality commands rust-workflows runs in CI, run here
+just deploy     # build HEAD, install it, restart once nothing is in flight
 ```

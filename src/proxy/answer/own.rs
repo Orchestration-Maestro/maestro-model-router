@@ -116,7 +116,12 @@ pub(super) fn catalogue(
 pub(super) fn properties(stream: &mut TcpStream, head_only: bool) -> std::io::Result<()> {
     reply::json(
         stream,
-        &serde_json::json!({ "models_autoload": true }),
+        &serde_json::json!({
+            "models_autoload": true,
+            // Which build is answering, so an operator asks the running
+            // router rather than trusting what was meant to be installed.
+            "build": { "version": crate::build::VERSION, "commit": crate::build::COMMIT },
+        }),
         head_only,
     )
 }

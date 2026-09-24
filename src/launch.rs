@@ -30,6 +30,7 @@ use std::process::ExitStatus;
 
 mod binary;
 mod invocation;
+mod output;
 mod probe;
 mod root;
 mod server;
@@ -111,9 +112,41 @@ pub struct Child {
     pub(super) id: String,
     pub(super) address: SocketAddr,
     pub(super) process: std::process::Child,
+    /// What the process has written, passed on and the last of it kept.
+    said: output::Said,
 }
 
 impl Child {
+    /// A process just spawned for this entry, with its output drained.
+    ///
+    /// Its standard output and error must be pipes: each is read on a thread
+    /// of its own for as long as the process writes to it.
+    fn spawned(id: String, address: SocketAddr, mut process: std::process::Child) -> Self {
+        let said = output::Said::default();
+        if let Some(stdout) = process.stdout.take() {
+            said.drain(&id, stdout);
+        }
+        if let Some(stderr) = process.stderr.take() {
+            said.drain(&id, stderr);
+        }
+        Self {
+            id,
+            address,
+            process,
+            said,
+        }
+    }
+
+    /// What this child said last, as a clause a failure can end with, or
+    /// nothing when it said nothing.
+    fn last_words(&self) -> String {
+        let last = self.said.last();
+        if last.is_empty() {
+            return String::new();
+        }
+        format!("; it said last:\n  {}", last.join("\n  "))
+    }
+
     /// Where this child answers.
     #[must_use]
     pub fn endpoint(&self) -> SocketAddr {

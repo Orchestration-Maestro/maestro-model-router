@@ -20,12 +20,55 @@
 //! one machine's business, and which interfaces that machine answers on is
 //! stated at the call rather than assumed here.
 
+use std::io::{ErrorKind, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use super::{Shared, answer};
 use crate::launch::Failure;
+
+/// How long `serve` waits at startup for an address no interface holds yet.
+///
+/// A bridge comes up beside the router at boot, and on two boots running it
+/// came up a moment after: the first start failed with "cannot assign
+/// requested address", and only the service manager's restart saved it. That
+/// restart gives up after five attempts in ten seconds, and takes loopback
+/// down with the bridge. Half a minute covers a slow boot.
+pub const ASSIGNED_WITHIN: Duration = Duration::from_secs(30);
+
+/// How often an address that is not assigned yet is tried again.
+const RETRY: Duration = Duration::from_millis(250);
+
+/// Waits until every address can be bound, or until `within` has passed.
+///
+/// Only an address that is not assigned to any interface is waited for; any
+/// other refusal, and an address still missing once `within` has passed, is
+/// left for [`Router::bind`](super::Router::bind) to report. Says so on
+/// `notices`, once per address it waits on, so a slow start is not a silent
+/// one.
+pub fn await_assigned(addresses: &[SocketAddr], within: Duration, notices: &mut impl Write) {
+    let deadline = Instant::now() + within;
+    for address in addresses {
+        let mut said = false;
+        while let Err(error) = TcpListener::bind(address) {
+            if error.kind() != ErrorKind::AddrNotAvailable || Instant::now() >= deadline {
+                break;
+            }
+            if !said {
+                // A notice that cannot be written changes nothing about the
+                // wait, so it is not a reason to stop.
+                drop(writeln!(
+                    notices,
+                    "waiting for {address} to be assigned to an interface"
+                ));
+                said = true;
+            }
+            thread::sleep(RETRY);
+        }
+    }
+}
 
 /// Reserves every address given, in the order given.
 ///

@@ -14,6 +14,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 mod support;
 use support::{MODEL, ModelsRoot, catalog_text, get, request, status, stub_binary};
@@ -153,6 +154,73 @@ fn a_wildcard_address_is_refused_because_it_names_no_interface() {
         refusal.contains("interface"),
         "and says why a wildcard in particular is refused: {refusal}"
     );
+}
+
+#[test]
+fn an_address_no_interface_holds_yet_is_waited_for_as_long_as_it_is_given() {
+    // TEST-NET-1 is on no interface here, and stands in for a bridge that
+    // comes up a moment after the router at boot. The router waits for it
+    // rather than failing at once and leaving a service manager to retry --
+    // which gives up after five restarts in ten seconds, taking loopback down
+    // with the bridge.
+    let (waited, said) = awaited(
+        vec!["192.0.2.1:0".parse().expect("an address")],
+        Duration::from_millis(400),
+    );
+    assert!(
+        waited >= Duration::from_millis(400),
+        "the address was waited for, as long as it was given; waited {waited:?}"
+    );
+    assert!(
+        waited < Duration::from_secs(5),
+        "and no longer, so a router whose address never comes still says so: {waited:?}"
+    );
+    assert_eq!(
+        said.matches("waiting for 192.0.2.1:0 to be assigned")
+            .count(),
+        1,
+        "and said what it was waiting for, once rather than at every attempt: {said:?}"
+    );
+}
+
+#[test]
+fn an_address_that_can_be_bound_is_not_waited_for() {
+    let (waited, said) = awaited(vec![ephemeral()], Duration::from_secs(30));
+    assert!(
+        waited < Duration::from_secs(5),
+        "a loopback address binds at once, and startup does not wait on it"
+    );
+    assert!(said.is_empty(), "nor says it waited: {said:?}");
+}
+
+#[test]
+fn an_address_refused_for_another_reason_is_not_waited_for() {
+    // Only an address no interface holds is worth waiting for. A port that
+    // is taken does not come free by itself, and is the bind's to report.
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let within = Duration::from_secs(2);
+    let (waited, said) = awaited(vec![taken.local_addr().expect("its address")], within);
+    assert!(
+        waited < within,
+        "a port already taken was not waited for; waited {waited:?}"
+    );
+    assert!(said.is_empty(), "nor said to be: {said:?}");
+}
+
+/// Waits for `addresses` on a thread of its own, and gives back how long that
+/// took and what it said -- failing, rather than hanging, if it never ends.
+fn awaited(addresses: Vec<SocketAddr>, within: Duration) -> (Duration, String) {
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut notices = Vec::new();
+        let started = Instant::now();
+        maestro_model_router::proxy::await_assigned(&addresses, within, &mut notices);
+        let said = String::from_utf8_lossy(&notices).into_owned();
+        drop(done.send((started.elapsed(), said)));
+    });
+    finished
+        .recv_timeout(within + Duration::from_secs(10))
+        .expect("the wait ended once it had waited as long as it was given")
 }
 
 #[test]

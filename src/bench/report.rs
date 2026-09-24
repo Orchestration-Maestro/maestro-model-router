@@ -123,9 +123,14 @@ fn today() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
+    date_of(seconds)
+}
 
-    // Civil-from-days, for the one date this prints. A calendar crate would be
-    // a dependency bought for a comment.
+/// The date a number of seconds since the Unix epoch falls on, as `YYYY-MM-DD`.
+///
+/// Civil-from-days, for the one date this prints. A calendar crate would be
+/// a dependency bought for a comment.
+fn date_of(seconds: u64) -> String {
     let (mut year, mut remaining) = (1970_u64, seconds / 86_400);
     loop {
         let length = if leap(year) { 366 } else { 365 };
@@ -161,4 +166,36 @@ fn today() -> String {
 /// Whether a year has a twenty-ninth of February.
 const fn leap(year: u64) -> bool {
     (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_leap_year_is_every_fourth_except_centuries_not_divisible_by_four_hundred() {
+        assert!(leap(2024));
+        assert!(leap(2000));
+        assert!(!leap(2023));
+        assert!(!leap(1900));
+    }
+
+    #[test]
+    fn seconds_since_the_epoch_land_on_their_calendar_date() {
+        // Hand-checked instants: the epoch itself, a leap day, the first day
+        // after a century that was not a leap year, and a recent date.
+        assert_eq!(date_of(0), "1970-01-01");
+        assert_eq!(date_of(951_782_400), "2000-02-29");
+        assert_eq!(date_of(4_107_542_400), "2100-03-01");
+        assert_eq!(date_of(1_790_208_000), "2026-09-24");
+    }
+
+    #[test]
+    fn today_is_the_date_the_clock_gives() {
+        let today = today();
+        assert!(
+            today.len() == 10 && today.as_str() >= "2026-09-24",
+            "a date, and none earlier than this test: {today:?}"
+        );
+    }
 }

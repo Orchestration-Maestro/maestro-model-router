@@ -15,6 +15,7 @@
 //! expires is the wait, not the request: a caller that waited the whole window
 //! and still found no room gets the refusal it would have got immediately.
 
+use std::ffi::OsString;
 use std::time::Duration;
 
 use crate::launch::Failure;
@@ -58,7 +59,20 @@ impl Wait {
     /// not silently become the default, because the difference is whether a
     /// caller is held or answered.
     pub fn configured() -> Result<Self, Failure> {
-        let Some(value) = std::env::var_os(VARIABLE).filter(|value| !value.is_empty()) else {
+        Self::from_variable(std::env::var_os(VARIABLE))
+    }
+
+    /// The wait a value of the variable describes, read as
+    /// [`Wait::configured`] reads the environment.
+    ///
+    /// Separate so the rule can be tested without changing the process
+    /// environment, which Rust 2024 makes `unsafe`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] when the value is not a whole number of seconds.
+    pub fn from_variable(value: Option<OsString>) -> Result<Self, Failure> {
+        let Some(value) = value.filter(|value| !value.is_empty()) else {
             return Ok(Self(DEFAULT));
         };
 
@@ -103,5 +117,38 @@ mod tests {
     #[test]
     fn a_stated_wait_is_carried_as_given() {
         assert_eq!(Wait::new(Duration::from_secs(5)).duration().as_secs(), 5);
+    }
+
+    #[test]
+    fn an_unset_or_empty_wait_is_the_sixty_second_default() {
+        for value in [None, Some(OsString::new())] {
+            let wait = Wait::from_variable(value).expect("unset is not an error");
+            assert_eq!(wait.duration(), Duration::from_secs(60));
+        }
+    }
+
+    #[test]
+    fn a_numeric_wait_is_used_as_given_and_zero_refuses_at_once() {
+        let two_minutes = Wait::from_variable(Some("120".into())).expect("a number");
+        assert_eq!(two_minutes.duration(), Duration::from_secs(120));
+        assert!(two_minutes.waits());
+
+        let never = Wait::from_variable(Some(" 0 ".into())).expect("zero is a number");
+        assert!(
+            !never.waits(),
+            "0 means refuse rather than wait the default"
+        );
+    }
+
+    #[test]
+    fn a_mistyped_wait_is_refused_naming_the_variable_and_the_value() {
+        let Err(failure) = Wait::from_variable(Some("a while".into())) else {
+            panic!("a wait someone typed wrongly must not become the default");
+        };
+        let failure = failure.to_string();
+        assert!(
+            failure.contains(VARIABLE) && failure.contains("a while"),
+            "the refusal names the variable and what it carried: {failure}"
+        );
     }
 }

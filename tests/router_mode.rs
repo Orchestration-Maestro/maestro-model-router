@@ -126,6 +126,24 @@ fn the_properties_say_whether_the_router_loads_on_demand() {
 }
 
 #[test]
+fn the_properties_say_which_build_is_answering() {
+    let serving = serving(CATALOG, ModelsRoot::with(&[MODEL]));
+    let reply = request(serving.address(), &get("/props"));
+    let build = &body(&reply)["build"];
+
+    assert_eq!(
+        build["version"],
+        env!("CARGO_PKG_VERSION"),
+        "the release answering, so an operator can ask a running router \
+         what it is rather than trusting what was meant to be installed:\n{reply}"
+    );
+    assert!(
+        build["commit"].is_string(),
+        "and the commit it was built from:\n{reply}"
+    );
+}
+
+#[test]
 fn an_entry_that_is_loaded_says_so() {
     let serving = serving(CATALOG, ModelsRoot::with(&[MODEL]));
 

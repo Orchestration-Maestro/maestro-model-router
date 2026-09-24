@@ -108,8 +108,9 @@ impl Server {
             if let Liveness::Exited(status) = child.check() {
                 return Err((
                     Failure::Unavailable(format!(
-                        "entry '{}': the server exited while loading ({status})",
-                        child.id
+                        "entry '{}': the server exited while loading ({status}){}",
+                        child.id,
+                        child.last_words()
                     )),
                     !ever_connected,
                 ));
@@ -125,8 +126,10 @@ impl Server {
                 child.stop();
                 return Err((
                     Failure::NotReady(format!(
-                        "entry '{}': not ready within its startup budget of {} seconds",
-                        child.id, entry.startup_timeout_seconds
+                        "entry '{}': not ready within its startup budget of {} seconds{}",
+                        child.id,
+                        entry.startup_timeout_seconds,
+                        child.last_words()
                     )),
                     false,
                 ));
@@ -205,18 +208,11 @@ impl Server {
         // it. The Windows equivalent is a job object, which needs a dependency
         // and is recorded as a risk rather than half-built here.
         //
-        // Output goes nowhere, and both alternatives were tried and rejected.
-        // A pipe nobody drains blocks the child once its buffer fills, and
-        // llama-server logs heavily through exactly the window this slice
-        // waits out. Inheriting is worse: a child then holds whatever stdout
-        // its parent had, so an orphan keeps a test harness's captured pipe
-        // open and the harness waits for an end-of-file that never comes.
-        // Draining threads would keep the log, and belong to the slice that
-        // has somewhere to put it.
+        // Output is piped and drained, never inherited: `output` says why.
         let process = Command::new(self.binary_for(entry)?)
             .args(invocation::of(entry, root, port))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| {
                 Failure::Unavailable(format!(
@@ -226,11 +222,11 @@ impl Server {
                 ))
             })?;
 
-        Ok(Child {
-            id: entry.id.clone(),
-            address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        Ok(Child::spawned(
+            entry.id.clone(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
             process,
-        })
+        ))
     }
 }
 

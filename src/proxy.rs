@@ -63,6 +63,7 @@ use std::thread;
 use crate::idle::Limits;
 use crate::launch::{Failure, Server};
 
+mod access;
 mod answer;
 mod body;
 mod endpoint;
@@ -77,6 +78,8 @@ mod residents;
 mod shared;
 mod slots;
 
+pub use access::Access;
+pub use listen::{ASSIGNED_WITHIN, await_assigned};
 use reaper::Stop;
 use shared::Shared;
 pub use shared::Source;
@@ -117,6 +120,7 @@ impl Router {
                 slots,
                 resident_failures: Mutex::new(Vec::new()),
                 idle_window: limits.idle_window,
+                access: limits.access,
                 stop: Stop::new(),
             }),
         })
