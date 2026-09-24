@@ -14,6 +14,12 @@ for how a change is proposed. The organization's
 [constitution](https://github.com/Orchestration-Maestro/.github/blob/main/CONSTITUTION.md)
 binds every specification, plan, review and release.
 
+For quality, engineering or security changes, read
+[northstar.md](../docs/standards/northstar.md),
+[engineering.md](../docs/standards/engineering.md) and
+[security.md](../docs/standards/security.md): this repository's map of the
+organization's golden rules.
+
 Keep changes scoped to the request, and read historical plans and specifications
 as records, not as instructions to start new work.
 
@@ -40,6 +46,10 @@ already here, so improve an explanation in place.
 │   ├── adr/                                                       # Architecture decision records
 │   │   ├── 0001-one-crate-until-a-seam-is-real.md                 # ADR 0001: One crate until a seam is real
 │   │   └── 0002-maestro-model-router-in-orchestration-maestro.md  # ADR 0002: maestro-model-router in Orchestration-Maestro
+│   ├── standards/                                                 # Standards
+│   │   ├── engineering.md                                         # Engineering rules in maestro-model-router
+│   │   ├── northstar.md                                           # Northstar for maestro-model-router
+│   │   └── security.md                                            # Security rules in maestro-model-router
 │   └── superpowers/                                               # Superpowers
 │       ├── plans/                                                 # Implementation plans
 │       │   ├── 2026-09-03-bootstrap-and-catalog.md                # Bootstrap and catalog implementation plan
@@ -182,7 +192,6 @@ already here, so improve an explanation in place.
 ├── Cargo.lock                                                     # Exact dependency versions, committed so every build resolves the same
 ├── Cargo.toml                                                     # Crate manifest: Router that supervises llama.cpp server processes and serves one endpoint per model
 ├── LICENSE                                                        # The licence this repository is distributed under
-├── NORTHSTAR.md                                                   # North star
 ├── README.md                                                      # maestro-model-router is Orchestration-Maestro's model router, and its command is model-router
 ├── catalog.toml                                                   # The models this router serves
 ├── clippy.toml                                                    # Governance's pylint bar: max-args 5
