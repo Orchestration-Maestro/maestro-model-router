@@ -1,13 +1,55 @@
-# maestro-model-router
+<p align="center">
+  <img src=".github/assets/maestro-model-router.jpg" alt="Maestro Model Router: load what's asked, free what's idle." width="100%" />
+</p>
 
-[![CI](https://github.com/Orchestration-Maestro/maestro-model-router/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Orchestration-Maestro/maestro-model-router/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Orchestration-Maestro/maestro-model-router/badge)](https://scorecard.dev/viewer/?uri=github.com/Orchestration-Maestro/maestro-model-router)
+<h1 align="center">🔀 Maestro Model Router</h1>
+
+<p align="center">
+  One OpenAI-compatible endpoint for every local model: it loads what a request asks for, and frees what sits idle.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-2024-CE422B?style=for-the-badge&amp;logo=rust&amp;logoColor=white" alt="Rust 2024" />
+  <img src="https://img.shields.io/badge/Serves-llama.cpp-334155?style=for-the-badge" alt="Supervises llama.cpp's llama-server" />
+  <img src="https://img.shields.io/badge/API-OpenAI--compatible-334155?style=for-the-badge" alt="OpenAI-compatible endpoints" />
+  <img src="https://img.shields.io/badge/Tests-Linux%20%7C%20macOS%20%7C%20Windows-334155?style=for-the-badge&amp;logo=githubactions&amp;logoColor=white" alt="Every pull request tests Linux, macOS and Windows" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/Orchestration-Maestro/maestro-model-router/actions/workflows/ci.yml"><img src="https://github.com/Orchestration-Maestro/maestro-model-router/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/Orchestration-Maestro/maestro-model-router"><img src="https://api.scorecard.dev/projects/github.com/Orchestration-Maestro/maestro-model-router/badge" alt="OpenSSF Scorecard" /></a>
+  <a href="https://codecov.io/gh/Orchestration-Maestro/maestro-model-router"><img src="https://codecov.io/gh/Orchestration-Maestro/maestro-model-router/graph/badge.svg" alt="Codecov line coverage" /></a>
+</p>
 
 maestro-model-router is Orchestration-Maestro's model router, and its command
 is `model-router`. It supervises llama.cpp server processes and exposes one
 OpenAI-compatible endpoint per model plus a generic routing endpoint.
 
-Status: the fifth slice. The router reads and validates a catalog, takes one
+## ⚡ Quick start
+
+With `llama-server` from [llama.cpp](https://github.com/ggml-org/llama.cpp) on
+the search path:
+
+```sh
+git clone https://github.com/Orchestration-Maestro/maestro-model-router
+cd maestro-model-router
+cargo install --locked --path . --bin model-router
+model-router check catalog.toml   # every problem, each by its entry and field
+model-router serve catalog.toml   # one endpoint per model, and one routed by the body
+```
+
+Models resolve under `MAESTRO_MODELS_ROOT`, or `models` in the home directory.
+Then ask any model the catalog carries through the routed endpoint:
+
+```sh
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "gemma3", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+## 📍 Status
+
+This is the fifth slice. The router reads and validates a catalog, takes one
 entry from it as far as a running `llama-server` on a loopback port, and serves
 both a dedicated endpoint per model and a generic endpoint that routes by the
 model a request body names, relaying a streamed reply to the caller as it
@@ -15,7 +57,7 @@ arrives. It holds models within a configured memory budget, unloading an idle
 one to make room for another, and holds the resident entries loaded from the
 moment it starts serving.
 
-## Checking a catalog
+## ✅ Checking a catalog
 
 ```sh
 model-router check catalog.toml
@@ -43,7 +85,7 @@ models.toml is not usable:
 relative to a models root supplied at run time, so the file describes a set of
 models without naming the machine they sit on.
 
-## Launching one model
+## 🚀 Launching one model
 
 ```sh
 model-router launch catalog.toml gemma3
@@ -166,7 +208,7 @@ A request naming an origin not on the list is refused before anything else
 happens; a caller that is no browser names none and is unaffected. The router
 says at startup which rules it runs under, and never prints the key.
 
-## Serving
+## 🔌 Serving
 
 ```sh
 model-router serve catalog.toml
@@ -522,7 +564,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 Once a response has begun there is no status left to send, so a failure after
 that point closes the connection rather than pretending it can still answer.
 
-## Documents
+## 📚 Documents
 
 - [Model router design](docs/superpowers/specs/2026-09-03-model-router-design.md)
   -- the architecture, the catalog, and the six slices it ships in.
@@ -539,9 +581,15 @@ that point closes the connection rather than pretending it can still answer.
 - [ADR 0002](docs/adr/0002-maestro-model-router-in-orchestration-maestro.md)
   -- the move to Orchestration-Maestro, the new name, and the standards it
   brought.
+- [Northstar](docs/standards/northstar.md),
+  [engineering](docs/standards/engineering.md) and
+  [security](docs/standards/security.md) -- how the organization's golden
+  rules hold in this repository.
 - [AGENTS.md](AGENTS.md) -- how to work in this repository.
+- [Banner credits](.github/assets/CREDITS.md) -- how the banner artwork was
+  made.
 
-## Local commands
+## 🛠️ Local commands
 
 ```sh
 just install    # the toolchain and the gate tools

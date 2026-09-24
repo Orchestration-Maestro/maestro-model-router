@@ -34,6 +34,9 @@ already here, so improve an explanation in place.
 ├── .cargo/                                                        # Cargo settings for this workspace
 │   └── mutants.toml                                               # What cargo mutants leaves out when rust-workflows mutates a change
 ├── .github/                                                       # GitHub metadata, templates and workflows
+│   ├── assets/                                                    # Images and other assets
+│   │   ├── CREDITS.md                                             # Banner credits
+│   │   └── maestro-model-router.jpg                               # Maestro Model Router: load what's asked, free what's idle
 │   ├── workflows/                                                 # GitHub Actions workflows
 │   │   ├── ci.yml                                                 # CI: calls ci.yml, upload-coverage.yml, upload-sarif.yml
 │   │   ├── dependabot-auto-merge.yml                              # Dependabot auto-merge
