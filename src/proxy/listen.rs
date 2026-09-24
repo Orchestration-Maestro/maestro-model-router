@@ -160,7 +160,7 @@ fn on(listener: &TcpListener, shared: &Arc<Shared>) {
             let _held = Held(&shared.permits);
             // A failed answer is a caller that hung up, which is its own
             // business. The next connection is what matters.
-            drop(answer::to(&shared, stream));
+            drop(answer::to(&shared, &stream));
         });
     }
 }

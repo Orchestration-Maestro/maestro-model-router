@@ -19,6 +19,50 @@ mod support;
 use support::{MODEL, ModelsRoot, catalog_text, get, health, post, request, serving, status};
 
 #[test]
+fn a_relayed_reply_ends_when_the_router_is_done_with_it() {
+    // On Windows a cloned socket is a handle a child spawned while it is open
+    // inherits (rust-lang/rust#70719). A request that loaded a model held a
+    // clone of its caller's socket as the child started, so its connection
+    // stayed open until that model exited: a caller reading to the end waited
+    // out its own timeout, every time, for every relayed reply.
+    let serving = serving(&catalog_text(""), ModelsRoot::with(&[MODEL]));
+
+    let started = Instant::now();
+    let reply = request(serving.address(), &get("/models/gemma3/v1/echo"));
+    let took = started.elapsed();
+
+    assert_eq!(status(&reply), Some(200), "{reply}");
+    assert!(
+        took < Duration::from_secs(10),
+        "the reply ended when the router was done with it, not when the \
+         caller gave up reading; it took {took:?}"
+    );
+}
+
+#[test]
+fn an_expectation_with_no_body_to_send_is_answered_without_an_interim_line() {
+    // `Expect: 100-continue` asks leave to send a body. With none declared
+    // there is nothing to wait for, and a `100` would be a line the client
+    // then has to read past before the answer it asked for.
+    let serving = serving(&catalog_text(""), ModelsRoot::with(&[MODEL]));
+
+    let reply = request(
+        serving.address(),
+        "POST /models/gemma3/v1/echo HTTP/1.1\r\n\
+         Host: router\r\n\
+         Content-Length: 0\r\n\
+         Expect: 100-continue\r\n\
+         Connection: close\r\n\
+         \r\n",
+    );
+
+    assert!(
+        reply.starts_with("HTTP/1.1 200 "),
+        "the answer came first, with no interim line before it:\n{reply}"
+    );
+}
+
+#[test]
 fn an_unknown_identifier_is_not_found_and_names_what_the_catalog_carries() {
     let serving = serving(&catalog_text(""), ModelsRoot::with(&[MODEL]));
 

@@ -17,9 +17,8 @@
 
 use std::io::{BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::Duration;
 
 use super::head::Head;
@@ -46,8 +45,8 @@ pub(super) fn run(
     head: &Head,
     child: &Child,
     body: Option<&[u8]>,
-    reader: &mut BufReader<TcpStream>,
-    downstream: &mut TcpStream,
+    reader: &mut BufReader<&TcpStream>,
+    downstream: &TcpStream,
 ) -> std::io::Result<()> {
     let endpoint = child.endpoint();
     let mut upstream = upstream_to(endpoint)?;
@@ -63,7 +62,7 @@ pub(super) fn run(
     }
     upstream.flush()?;
 
-    copy_response(&mut upstream, downstream);
+    copy_response(&upstream, downstream);
     // Dropped here whatever happened, which closes it. A closed connection is
     // how `llama-server` is told to stop generating, so a caller that hung up
     // does not leave a model producing an answer nobody reads.
@@ -90,7 +89,7 @@ fn upstream_to(endpoint: SocketAddr) -> std::io::Result<TcpStream> {
 /// is a header, not a reason to reserve four gigabytes.
 fn forward_body(
     head: &Head,
-    reader: &mut BufReader<TcpStream>,
+    reader: &mut BufReader<&TcpStream>,
     upstream: &mut TcpStream,
 ) -> std::io::Result<()> {
     let mut remaining = head.body_bytes();
@@ -129,22 +128,27 @@ const WATCH: Duration = Duration::from_millis(100);
 /// reading a long prompt or finishing a reply it does not stream writes
 /// nothing for minutes. Without the watch, such a model stayed busy and kept
 /// generating for nobody until it spoke.
-fn copy_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
+///
+/// The watch shares both sockets, on a thread scoped to the copy, rather than
+/// cloning them. On Windows a clone is a handle any child started meanwhile
+/// inherits (rust-lang/rust#70719), and a connection with a handle in another
+/// process does not close when this one lets it go: a caller's reply did not
+/// end, and a child told to stop was not, until that other child exited.
+fn copy_response(upstream: &TcpStream, downstream: &TcpStream) {
     // One write per event, sent when it is made rather than batched with the
     // next: the same reason as `upstream_to`, on the side a stream leaves by.
     drop(downstream.set_nodelay(true));
-    let relaying = Arc::new(AtomicBool::new(true));
-    let watch = watch(downstream, upstream, &relaying);
-    relay_response(upstream, downstream);
-    relaying.store(false, Ordering::Relaxed);
-    // Wakes the watch where the platform lets a shutdown do that. Only the
-    // reading half: the caller must not see its reply end while the model is
-    // still held, or a caller quick to ask again finds it busy. The owner of
-    // the connection ends it, once it has let the model go.
-    drop(downstream.shutdown(Shutdown::Read));
-    if let Some(watch) = watch {
-        drop(watch.join());
-    }
+    let relaying = AtomicBool::new(true);
+    thread::scope(|scope| {
+        watch(scope, downstream, upstream, &relaying);
+        relay_response(upstream, downstream);
+        relaying.store(false, Ordering::Relaxed);
+        // Wakes the watch where the platform lets a shutdown do that. Only
+        // the reading half: the caller must not see its reply end while the
+        // model is still held, or a caller quick to ask again finds it busy.
+        // The owner of the connection ends it, once it has let the model go.
+        drop(downstream.shutdown(Shutdown::Read));
+    });
 }
 
 /// Watches the caller's side of the connection while a response is relayed,
@@ -161,22 +165,23 @@ fn copy_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
 /// connection in turn, which `llama-server` does once it next looks -- about
 /// once a second.
 ///
-/// `None` when the sockets cannot be duplicated, in which case the relay runs
-/// as it did before the watch existed: a caller that leaves is noticed on the
-/// next write.
-fn watch(
-    downstream: &TcpStream,
-    upstream: &TcpStream,
-    relaying: &Arc<AtomicBool>,
-) -> Option<JoinHandle<()>> {
-    let caller = downstream.try_clone().ok()?;
-    let child = upstream.try_clone().ok()?;
-    caller.set_read_timeout(Some(WATCH)).ok()?;
-    let relaying = Arc::clone(relaying);
-    Some(thread::spawn(move || {
+/// Not started when the caller's socket will not take a read timeout, in which
+/// case the relay runs as it did before the watch existed: a caller that
+/// leaves is noticed on the next write.
+fn watch<'scope, 'env>(
+    scope: &'scope thread::Scope<'scope, 'env>,
+    caller: &'env TcpStream,
+    child: &'env TcpStream,
+    relaying: &'env AtomicBool,
+) {
+    if caller.set_read_timeout(Some(WATCH)).is_err() {
+        return;
+    }
+    scope.spawn(move || {
         let mut byte = [0u8; 1];
+        let mut caller = caller;
         while relaying.load(Ordering::Relaxed) {
-            match (&caller).read(&mut byte) {
+            match caller.read(&mut byte) {
                 Ok(0) => break,
                 Ok(_) => {}
                 Err(error)
@@ -190,11 +195,11 @@ fn watch(
         if relaying.load(Ordering::Relaxed) {
             drop(child.shutdown(Shutdown::Both));
         }
-    }))
+    });
 }
 
 /// The copy itself: every read written and flushed before the next.
-fn relay_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
+fn relay_response(mut upstream: &TcpStream, mut downstream: &TcpStream) {
     let mut buffer = [0u8; BUFFER];
     loop {
         // End-of-file and a broken upstream are one arm because they are one
@@ -237,8 +242,8 @@ mod tests {
         // on: the watch cannot see it, since it has not left, but a write to
         // it times out. A relay that took the timeout for a pause and tried
         // again would hold the model for as long as the caller stayed.
-        let (mut upstream, mut child) = connection();
-        let (mut downstream, _caller) = connection();
+        let (upstream, mut child) = connection();
+        let (downstream, _caller) = connection();
         downstream
             .set_write_timeout(Some(Duration::from_millis(200)))
             .expect("a write timeout");
@@ -254,7 +259,7 @@ mod tests {
         });
         let (done, finished) = std::sync::mpsc::channel();
         thread::spawn(move || {
-            copy_response(&mut upstream, &mut downstream);
+            copy_response(&upstream, &downstream);
             done.send(()).ok();
         });
 
@@ -274,10 +279,10 @@ mod tests {
             .expect("a connection to the child");
         assert!(upstream.nodelay().expect("its setting"), "to the child");
 
-        let (mut upstream, child) = connection();
+        let (upstream, child) = connection();
         drop(child);
-        let (mut downstream, _caller) = connection();
-        copy_response(&mut upstream, &mut downstream);
+        let (downstream, _caller) = connection();
+        copy_response(&upstream, &downstream);
         assert!(downstream.nodelay().expect("its setting"), "to the caller");
     }
 
@@ -287,14 +292,14 @@ mod tests {
         // connection go, so a caller that reads to the end finds the model
         // idle. A relay that ended the connection itself did so while the
         // model was still held, and a caller quick to ask again found it busy.
-        let (mut upstream, mut child) = connection();
+        let (upstream, mut child) = connection();
         child
             .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
             .expect("the reply, written");
         drop(child);
-        let (mut downstream, mut caller) = connection();
+        let (downstream, mut caller) = connection();
 
-        copy_response(&mut upstream, &mut downstream);
+        copy_response(&upstream, &downstream);
 
         caller
             .set_read_timeout(Some(Duration::from_millis(300)))

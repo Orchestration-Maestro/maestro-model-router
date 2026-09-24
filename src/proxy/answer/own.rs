@@ -39,7 +39,7 @@ use super::reply;
 /// embedding has to find it somewhere, and that surface is a catalogue rather
 /// than a menu.
 pub(super) fn catalogue(
-    stream: &mut TcpStream,
+    stream: &TcpStream,
     shared: &Shared,
     head_only: bool,
 ) -> std::io::Result<()> {
@@ -113,7 +113,7 @@ pub(super) fn catalogue(
 /// is not running starts it, which is the whole point of the router. A client
 /// that reads this decides not to ask for a load before a completion, and it
 /// would be right.
-pub(super) fn properties(stream: &mut TcpStream, head_only: bool) -> std::io::Result<()> {
+pub(super) fn properties(stream: &TcpStream, head_only: bool) -> std::io::Result<()> {
     reply::json(
         stream,
         &serde_json::json!({
@@ -144,7 +144,7 @@ pub(super) fn properties(stream: &mut TcpStream, head_only: bool) -> std::io::Re
 ///
 /// Never `HEAD`: the method set for this endpoint is `POST` alone, so a
 /// caller that got here sent one.
-pub(super) fn reload(stream: &mut TcpStream, shared: &Shared) -> std::io::Result<()> {
+pub(super) fn reload(stream: &TcpStream, shared: &Shared) -> std::io::Result<()> {
     match shared.reload() {
         Ok(changed) => reply::json(
             stream,
