@@ -449,14 +449,40 @@ fn launched(
     idle_window: Duration,
     wait: Duration,
 ) -> Serving {
-    let parsed = maestro_model_router::catalog::Catalog::parse(catalog).expect("a usable catalog");
-    let server = maestro_model_router::launch::Server::located(Some(&stub_binary()))
-        .expect("the stub binary is built by cargo test");
     let limits = maestro_model_router::idle::Limits::new(
         budget,
         maestro_model_router::idle::IdleWindow::new(idle_window),
         maestro_model_router::queue::Wait::new(wait),
     );
+    launched_with(catalog, root, limits)
+}
+
+/// A router serving `catalog` under these rules for who may use it, with no
+/// budget, no idle window and no wait.
+#[must_use]
+pub fn guarded(
+    catalog: &str,
+    root: ModelsRoot,
+    access: maestro_model_router::proxy::Access,
+) -> Serving {
+    let limits = maestro_model_router::idle::Limits::new(
+        maestro_model_router::admission::Budget::new(None),
+        maestro_model_router::idle::IdleWindow::new(Duration::ZERO),
+        maestro_model_router::queue::Wait::new(Duration::ZERO),
+    )
+    .with_access(access);
+    launched_with(catalog, root, limits)
+}
+
+/// A router serving `catalog` from `root` within these limits.
+fn launched_with(
+    catalog: &str,
+    root: ModelsRoot,
+    limits: maestro_model_router::idle::Limits,
+) -> Serving {
+    let parsed = maestro_model_router::catalog::Catalog::parse(catalog).expect("a usable catalog");
+    let server = maestro_model_router::launch::Server::located(Some(&stub_binary()))
+        .expect("the stub binary is built by cargo test");
     // Where a reload would read from. The helpers that parse a catalog out of
     // a string still name a path, because `bind` takes one: it is the file
     // `reloadable` wrote, or a name nothing put anything at -- in which case

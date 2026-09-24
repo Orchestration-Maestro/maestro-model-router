@@ -170,7 +170,28 @@ fn serve_refuses_an_address_that_is_not_one() {
 #[cfg(unix)]
 mod with_the_stub {
     use super::*;
-    use support::spawned::SearchPath;
+    use support::spawned::{RouterProcess, SearchPath};
+    use support::{get, request, status};
+
+    #[test]
+    fn serve_requires_the_key_its_environment_sets() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+        let search = SearchPath::with_stub();
+
+        let mut router = RouterProcess::serve_with(
+            Path::new(&catalog),
+            &root,
+            &search,
+            &[("MAESTRO_API_KEY", "s3cret")],
+        );
+        let reply = request(router.address(), &get("/v1/models"));
+        assert_eq!(
+            status(&reply),
+            Some(401),
+            "the key set in the service's environment is the one it requires:\n{reply}"
+        );
+    }
 
     /// Runs `model-router` with the stub found on the search path as
     /// `llama-server`, the way a real server is found in the field.

@@ -86,6 +86,9 @@ pub(super) fn refuse(stream: &mut TcpStream, refusal: &Refusal) -> std::io::Resu
     if let Cause::MethodNotAllowed(allowed) = refusal.cause() {
         headers.push(("Allow", allowed.to_owned()));
     }
+    if matches!(refusal.cause(), Cause::Unauthorized) {
+        headers.push(("WWW-Authenticate", "Bearer".to_owned()));
+    }
     Reply {
         status: refusal.cause().status(),
         content_type: Some("application/json"),

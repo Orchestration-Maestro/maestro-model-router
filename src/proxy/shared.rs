@@ -57,6 +57,8 @@ pub(super) struct Shared {
     /// How long an on-demand, idle entry may go unused before the reaper
     /// unloads it. `None` means the reaper is never spawned at all.
     pub(super) idle_window: IdleWindow,
+    /// Who may use the router, checked before anything else is done.
+    pub(super) access: super::Access,
     /// Wakes the reaper the moment [`Router::stop`] is called. See
     /// [`reaper::Stop`] for why a `Weak<Shared>` alone is not enough: the
     /// test harness never drops a `Router`, so nothing would ever end it.

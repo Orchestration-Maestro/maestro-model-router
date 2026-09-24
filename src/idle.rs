@@ -16,21 +16,24 @@ use std::time::{Duration, Instant};
 use crate::admission::{Budget, Loaded};
 use crate::catalog::Residency;
 use crate::launch::Failure;
+use crate::proxy::Access;
 
 /// Where the idle window is configured, mirroring `MAESTRO_MEMORY_BUDGET_MIB`.
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";
 
-/// What `Router::bind` needs to know about one machine's memory, in the one
-/// value that keeps it a fifth argument rather than a sixth.
+/// What `Router::bind` needs to know about one machine -- its memory, and who
+/// may use it -- in the one value that keeps it a fifth argument rather than
+/// a sixth.
 ///
-/// The two settings answer different questions -- what may be held at once,
-/// and how long unused memory may be held -- and are read from the
+/// The settings answer different questions -- what may be held at once, how
+/// long unused memory may be held, who may ask -- and are read from the
 /// environment independently. They travel together only because `bind`'s
 /// argument count has nowhere left to grow.
 pub struct Limits {
     pub(crate) budget: Budget,
     pub(crate) idle_window: IdleWindow,
     pub(crate) wait: Wait,
+    pub(crate) access: Access,
 }
 
 impl Limits {
@@ -41,7 +44,15 @@ impl Limits {
             budget,
             idle_window,
             wait,
+            access: Access::default(),
         }
+    }
+
+    /// The same limits, with who may use the router; open to anyone who can
+    /// reach an address unless this is given.
+    #[must_use]
+    pub fn with_access(self, access: Access) -> Self {
+        Self { access, ..self }
     }
 }
 

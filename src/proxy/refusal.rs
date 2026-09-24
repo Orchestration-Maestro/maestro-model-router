@@ -63,6 +63,10 @@ pub(super) enum Cause {
     /// file they asked it to read again is what is wrong, and the catalog
     /// already serving is untouched by the attempt.
     CatalogUnreadable,
+    /// A key is required and the request did not carry it.
+    Unauthorized,
+    /// The request came from a browser page whose origin is not on the list.
+    OriginNotAllowed,
 }
 
 impl Cause {
@@ -87,6 +91,8 @@ impl Cause {
             Self::RoomContended => (503, "room_contended"),
             Self::NoRoom => (503, "insufficient_room"),
             Self::CatalogUnreadable => (400, "catalog_unreadable"),
+            Self::Unauthorized => (401, "invalid_api_key"),
+            Self::OriginNotAllowed => (403, "origin_not_allowed"),
         }
     }
 

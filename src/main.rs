@@ -17,7 +17,7 @@ use maestro_model_router::admission::Budget;
 use maestro_model_router::catalog::Catalog;
 use maestro_model_router::idle::{IdleWindow, Limits};
 use maestro_model_router::launch::{Server, models_root};
-use maestro_model_router::proxy::{ASSIGNED_WITHIN, Router};
+use maestro_model_router::proxy::{ASSIGNED_WITHIN, Access, Router};
 use maestro_model_router::queue::Wait;
 use maestro_model_router::{bench, startup};
 
@@ -103,7 +103,9 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
 
     let wait = Wait::configured().map_err(|failure| failure.to_string())?;
     let waiting = wait.waits();
-    let limits = Limits::new(budget, idle_window, wait);
+    let access = Access::configured();
+    let access_rules = access.described();
+    let limits = Limits::new(budget, idle_window, wait).with_access(access);
     // The path travels with what was parsed from it: `POST /reload` reads the
     // same file again, and a router handed only the parsed value would have
     // nowhere to read it from.
@@ -124,6 +126,7 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
     println!("  http://{bound}/models/<model>/v1/chat/completions");
     println!("  http://{bound}/v1/chat/completions   (routed by the body's model)");
     println!("  POST http://{bound}/reload                (re-reads the catalog)");
+    println!("{access_rules}");
     println!("{}", startup::budget(limit_mib, &budget_source));
     println!("{}", startup::admission_wait(waiting));
     if reserved_mib > 0 {

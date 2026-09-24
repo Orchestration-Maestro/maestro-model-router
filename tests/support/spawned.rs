@@ -81,16 +81,31 @@ pub struct RouterProcess {
 impl RouterProcess {
     /// Starts `model-router serve` on an ephemeral port.
     pub fn serve(catalog: &Path, root: &ModelsRoot, search: &SearchPath) -> Self {
+        Self::serve_with(catalog, root, search, &[])
+    }
+
+    /// Starts `model-router serve` on an ephemeral port, with these variables
+    /// set in its environment as well.
+    pub fn serve_with(
+        catalog: &Path,
+        root: &ModelsRoot,
+        search: &SearchPath,
+        variables: &[(&str, &str)],
+    ) -> Self {
         let mut process = Command::new(env!("CARGO_BIN_EXE_model-router"))
             .arg("serve")
             .arg(catalog)
             .arg("127.0.0.1:0")
             .env("PATH", search.value())
             .env("MAESTRO_MODELS_ROOT", root.path())
-            // Neither is under test, and either inherited from the shell
-            // would make the router do something this test did not ask for.
+            // None is under test unless given below, and any inherited from
+            // the shell would make the router do something this test did not
+            // ask for.
             .env_remove("MAESTRO_MEMORY_BUDGET_MIB")
             .env_remove("MAESTRO_IDLE_UNLOAD_SECONDS")
+            .env_remove("MAESTRO_API_KEY")
+            .env_remove("MAESTRO_ALLOWED_ORIGINS")
+            .envs(variables.iter().copied())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

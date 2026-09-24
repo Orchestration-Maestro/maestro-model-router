@@ -32,6 +32,9 @@ pub(super) fn to(shared: &Shared, mut stream: TcpStream) -> std::io::Result<()> 
         Ok(request) => request,
         Err(refusal) => return reply::refuse(&mut stream, &refusal),
     };
+    if let Err(refusal) = shared.access.admits(&request) {
+        return reply::refuse(&mut stream, &refusal);
+    }
 
     // A preflight asks what is allowed, which the router knows without
     // asking a child. Answered before framing is checked: a preflight has no

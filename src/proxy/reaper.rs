@@ -207,6 +207,7 @@ mod tests {
             slots,
             resident_failures: Mutex::new(Vec::new()),
             idle_window: IdleWindow::new(Duration::from_secs(600)),
+            access: super::super::Access::default(),
             stop: Stop::new(),
         });
 
