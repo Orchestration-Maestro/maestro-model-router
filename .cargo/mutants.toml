@@ -1,0 +1,14 @@
+# What `cargo mutants` leaves out when rust-workflows mutates a change.
+#
+# Each entry is one mutant no test can catch on Linux, where the gate runs,
+# and the reason. Remove an entry when its reason stops being true.
+
+exclude_re = [
+  # The watch in src/proxy/relay.rs ends on a read error that is not a
+  # timeout. Linux reports a reset connection once and end-of-file after
+  # it -- the first read fails with ECONNRESET, the second returns 0 -- so
+  # a watch that took the error for a pause still ends, one read later.
+  # The arm stays for any platform that reports the error again, where
+  # taking it for a pause would spin.
+  'src/proxy/relay\.rs:\d+:\d+: replace match guard .* with true in watch$',
+]

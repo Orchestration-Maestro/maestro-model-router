@@ -20,7 +20,7 @@
 //! one machine's business, and which interfaces that machine answers on is
 //! stated at the call rather than assumed here.
 
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 use std::thread;
@@ -45,9 +45,10 @@ const RETRY: Duration = Duration::from_millis(250);
 ///
 /// Only an address that is not assigned to any interface is waited for; any
 /// other refusal, and an address still missing once `within` has passed, is
-/// left for [`Router::bind`](super::Router::bind) to report. Says so once per
-/// address it waits on, so a slow start is not a silent one.
-pub fn await_assigned(addresses: &[SocketAddr], within: Duration) {
+/// left for [`Router::bind`](super::Router::bind) to report. Says so on
+/// `notices`, once per address it waits on, so a slow start is not a silent
+/// one.
+pub fn await_assigned(addresses: &[SocketAddr], within: Duration, notices: &mut impl Write) {
     let deadline = Instant::now() + within;
     for address in addresses {
         let mut said = false;
@@ -56,7 +57,12 @@ pub fn await_assigned(addresses: &[SocketAddr], within: Duration) {
                 break;
             }
             if !said {
-                eprintln!("waiting for {address} to be assigned to an interface");
+                // A notice that cannot be written changes nothing about the
+                // wait, so it is not a reason to stop.
+                drop(writeln!(
+                    notices,
+                    "waiting for {address} to be assigned to an interface"
+                ));
                 said = true;
             }
             thread::sleep(RETRY);

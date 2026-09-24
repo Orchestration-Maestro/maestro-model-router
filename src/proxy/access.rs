@@ -138,6 +138,7 @@ mod tests {
         assert!(!same("s3cres", "s3cret"), "one byte differs");
         assert!(!same("s3cre", "s3cret"), "a prefix is not the key");
         assert!(!same("s3crets", "s3cret"), "nor is a longer guess");
+        assert!(!same("ab", "ba"), "nor the key's bytes in another order");
     }
 
     #[test]

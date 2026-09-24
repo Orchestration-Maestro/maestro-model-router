@@ -13,10 +13,9 @@
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// How many of a child's last lines are kept for a failure to quote.
 const KEPT: usize = 5;
@@ -35,7 +34,9 @@ const SETTLE: Duration = Duration::from_millis(500);
 struct Kept {
     lines: Mutex<VecDeque<String>>,
     /// Streams still being drained. Zero once both have reached their end.
-    open: AtomicUsize,
+    open: Mutex<usize>,
+    /// Signalled each time a stream reaches its end.
+    ended: Condvar,
 }
 
 /// The last lines a child wrote, shared with the threads that drain it.
@@ -47,7 +48,7 @@ impl Said {
     pub(crate) fn drain(&self, id: &str, stream: impl Read + Send + 'static) {
         let said = self.clone();
         let id = id.to_owned();
-        said.0.open.fetch_add(1, Ordering::SeqCst);
+        *said.0.open.lock().unwrap_or_else(PoisonError::into_inner) += 1;
         thread::spawn(move || {
             let mut reader = BufReader::new(stream);
             let mut line = Vec::new();
@@ -61,7 +62,8 @@ impl Said {
                     Ok(_) => said.passed_on(&id, &String::from_utf8_lossy(&line)),
                 }
             }
-            said.0.open.fetch_sub(1, Ordering::SeqCst);
+            *said.0.open.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
+            said.0.ended.notify_all();
         });
     }
 
@@ -78,10 +80,13 @@ impl Said {
     /// What the child said last, oldest first, once its streams have ended
     /// or [`SETTLE`] has passed, whichever comes first.
     pub(crate) fn last(&self) -> Vec<String> {
-        let deadline = Instant::now() + SETTLE;
-        while self.0.open.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
+        let open = self.0.open.lock().unwrap_or_else(PoisonError::into_inner);
+        drop(
+            self.0
+                .ended
+                .wait_timeout_while(open, SETTLE, |open| *open > 0)
+                .unwrap_or_else(PoisonError::into_inner),
+        );
         let lines = self.0.lines.lock().unwrap_or_else(PoisonError::into_inner);
         lines.iter().cloned().collect()
     }
@@ -89,6 +94,9 @@ impl Said {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+    use std::time::Instant;
+
     use super::*;
 
     #[test]
@@ -121,5 +129,59 @@ mod tests {
         let said = Said::default();
         said.drain("model", std::io::Cursor::new(vec![b'o', b'k', 0xff, b'\n']));
         assert_eq!(said.last(), ["ok\u{fffd}"]);
+    }
+
+    #[test]
+    fn a_stream_still_open_is_waited_for_until_it_ends() {
+        let said = Said::default();
+        let (output, mut child) = std::io::pipe().expect("a pipe");
+        said.drain("model", output);
+        let speaking = thread::spawn(move || {
+            child
+                .write_all(b"early\n")
+                .expect("the first line, written");
+            thread::sleep(Duration::from_millis(100));
+            child.write_all(b"late\n").expect("the last line, written");
+        });
+
+        assert_eq!(
+            said.last(),
+            ["early", "late"],
+            "the last words are the ones said before the stream ended"
+        );
+        speaking.join().expect("the child finished speaking");
+    }
+
+    #[test]
+    fn once_every_stream_has_ended_its_lines_are_given_at_once() {
+        let said = Said::default();
+        said.drain("model", std::io::Cursor::new(b"done\n".to_vec()));
+        let started = Instant::now();
+
+        assert_eq!(said.last(), ["done"]);
+        assert!(
+            started.elapsed() < SETTLE,
+            "waited {:?} on streams that had ended",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_stream_that_never_ends_is_given_up_on() {
+        // What a grandchild does when it inherits the pipe and outlives the
+        // child: the stream stays open with nobody left to end it.
+        let said = Said::default();
+        let (output, mut held) = std::io::pipe().expect("a pipe");
+        held.write_all(b"still here\n").expect("a line, written");
+        said.drain("model", output);
+        let started = Instant::now();
+
+        assert_eq!(said.last(), ["still here"]);
+        let waited = started.elapsed();
+        assert!(
+            waited >= SETTLE && waited < SETTLE * 4,
+            "gave up after {waited:?}, not once {SETTLE:?} had passed"
+        );
+        drop(held);
     }
 }

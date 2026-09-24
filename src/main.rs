@@ -113,7 +113,7 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
         catalog: parsed,
         path: catalog.to_path_buf(),
     };
-    maestro_model_router::proxy::await_assigned(&wanted, ASSIGNED_WITHIN);
+    maestro_model_router::proxy::await_assigned(&wanted, ASSIGNED_WITHIN, &mut std::io::stderr());
     let router = Router::bind(&wanted, source, root, server, limits).map_err(|f| f.to_string())?;
     let router = Arc::new(router);
     for address in router.addresses() {

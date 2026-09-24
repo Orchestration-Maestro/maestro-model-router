@@ -189,4 +189,13 @@ mod tests {
         assert_eq!(date_of(4_107_542_400), "2100-03-01");
         assert_eq!(date_of(1_790_208_000), "2026-09-24");
     }
+
+    #[test]
+    fn today_is_the_date_the_clock_gives() {
+        let today = today();
+        assert!(
+            today.len() == 10 && today.as_str() >= "2026-09-24",
+            "a date, and none earlier than this test: {today:?}"
+        );
+    }
 }
