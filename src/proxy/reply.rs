@@ -13,8 +13,9 @@
 //! reply ended.
 
 use std::fmt::Write as _;
-use std::io::Write as _;
-use std::net::TcpStream;
+use std::io::{Read as _, Write as _};
+use std::net::{Shutdown, TcpStream};
+use std::time::{Duration, Instant};
 
 use super::Shared;
 use super::endpoint::Endpoint;
@@ -92,7 +93,41 @@ pub(super) fn refuse(stream: &mut TcpStream, refusal: &Refusal) -> std::io::Resu
         body: &refusal.envelope(),
         head_only: false,
     }
-    .write(stream)
+    .write(stream)?;
+    linger(stream);
+    Ok(())
+}
+
+/// How long a refused caller's remaining bytes are read and dropped, at most.
+const LINGER: Duration = Duration::from_secs(1);
+
+/// How much of a refused request is read and dropped, at most.
+const LINGER_BYTES: usize = 1024 * 1024;
+
+/// Lets a refusal reach a caller whose request was not read to the end.
+///
+/// A refusal is often written before the request is: a head too large to
+/// read, a body too large to take. Closing a socket that still holds unread
+/// bytes resets the connection, and a Windows client that receives the reset
+/// discards the reply it had not read yet, so the 431 this router just wrote
+/// would arrive as nothing. The write side is closed first, which tells the
+/// caller the reply is complete, and what it is still sending is read and
+/// dropped for a bounded moment before the socket goes. Best effort: the
+/// reply is already written, and a caller that keeps sending past the bound
+/// is reset as before.
+fn linger(stream: &TcpStream) {
+    if stream.shutdown(Shutdown::Write).is_err() || stream.set_read_timeout(Some(LINGER)).is_err() {
+        return;
+    }
+    let deadline = Instant::now() + LINGER;
+    let mut buffer = [0u8; 8 * 1024];
+    let mut drained = 0;
+    while drained < LINGER_BYTES && Instant::now() < deadline {
+        match (&mut &*stream).read(&mut buffer) {
+            Ok(0) | Err(_) => return,
+            Ok(read) => drained += read,
+        }
+    }
 }
 
 /// Every entry the catalog carries, in the shape a client expects.

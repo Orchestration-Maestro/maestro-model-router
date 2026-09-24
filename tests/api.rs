@@ -205,6 +205,48 @@ fn an_oversized_head_has_the_status_the_specification_gives_it() {
     );
 }
 
+/// A refused request the router did not read to the end must still end with
+/// its reply, not a reset.
+///
+/// Closing a socket that holds unread bytes resets the connection. Linux
+/// delivers the reply before the reset; Windows discards it, so a Windows
+/// client sent a 431 received nothing at all. The end of the stream is what
+/// tells the two apart on every platform: a clean end of file, or an error.
+#[test]
+fn a_refused_request_ends_with_its_reply_rather_than_a_reset() {
+    let serving = serving(&catalog_text(""), ModelsRoot::with(&[MODEL]));
+
+    let mut stream = TcpStream::connect(serving.address()).expect("the router accepts");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a read timeout");
+    let padding = "x".repeat(70 * 1024);
+    stream
+        .write_all(
+            format!("GET /v1/models HTTP/1.1\r\nHost: router\r\nX-Big: {padding}\r\n\r\n")
+                .as_bytes(),
+        )
+        .expect("the head is sent");
+
+    let mut reply = Vec::new();
+    let mut buffer = [0u8; 4096];
+    let ending = loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break Ok(()),
+            Ok(read) => reply.extend_from_slice(&buffer[..read]),
+            Err(error) => break Err(error),
+        }
+    };
+    let reply = String::from_utf8_lossy(&reply);
+
+    assert_eq!(status(&reply), Some(431), "the refusal arrived:\n{reply}");
+    assert!(
+        ending.is_ok(),
+        "the connection ended with {ending:?} after the reply, which a Windows \
+         client turns into no reply at all"
+    );
+}
+
 #[test]
 fn a_router_authored_reply_is_readable_by_a_browser_client() {
     let serving = serving(&catalog_text(""), ModelsRoot::with(&[MODEL]));
