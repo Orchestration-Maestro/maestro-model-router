@@ -17,7 +17,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 mod support;
-use support::{MODEL, ModelsRoot, post, queued, request, status};
+use support::{MODEL, ModelsRoot, post, queued, request, settled, status};
 
 /// A second model file, so there is something to want the room for.
 const SECOND_MODEL: &str = "cache/qwen/qwen3-8b.gguf";
@@ -150,9 +150,11 @@ fn a_wait_of_zero_refuses_exactly_as_it_did_before() {
     drop(streaming);
 }
 
-/// Three large entries and a small one under a budget of 4096 MiB: any large
-/// one fills most of it, and the small one fits beside any of them. The first
-/// streams for three seconds, long enough to ask for the others while it does.
+/// Three large entries and two small ones under a budget of 4096 MiB: any
+/// large one fills most of it, and a small one fits beside it. gemma3 streams
+/// for three seconds, long enough to ask for the others while it does; the
+/// other large ones stream for one, so the order they are served in shows as
+/// a second between their first bytes rather than as a race between threads.
 fn contended() -> String {
     format!(
         "version = 1\n\
@@ -171,35 +173,96 @@ fn contended() -> String {
          \n\
          [models.qwen38]\n\
          path = \"{SECOND_MODEL}\"\n\
+         [models.qwen38.flags]\n\
+         stream-events = \"10\"\n\
+         stream-gap = \"100\"\n\
          \n\
          [models.third]\n\
          path = \"{SECOND_MODEL}\"\n\
+         [models.third.flags]\n\
+         stream-events = \"10\"\n\
+         stream-gap = \"100\"\n\
          \n\
          [models.tiny]\n\
          path = \"{MODEL}\"\n\
-         memory_estimate_mib = 512\n"
+         memory_estimate_mib = 512\n\
+         \n\
+         [models.small]\n\
+         path = \"{SECOND_MODEL}\"\n\
+         memory_estimate_mib = 1000\n"
     )
 }
 
-/// How long a request sent a moment ago is given to be waiting in line before
-/// the test does the next thing -- long enough on a loaded machine as well as
-/// an idle one, and well inside the three seconds the stream holds the room.
-const IN_LINE: Duration = Duration::from_secs(1);
-
-/// Asks for `id` on a thread of its own, and sends back its reply once it has
-/// one, so a test can see which of several waiting requests finished first.
-fn asked(
-    address: SocketAddr,
+/// One reply to a request asked on a thread of its own.
+struct Reply {
     id: &'static str,
-    replies: &std::sync::mpsc::Sender<(&'static str, String)>,
-) {
+    /// When its first byte arrived, which is when the router began serving
+    /// it -- and, unlike when a thread got round to reporting it, a moment
+    /// the router chose.
+    began: Instant,
+    text: String,
+}
+
+/// Asks `id` for a stream on a thread of its own, and sends back the reply
+/// with when it began.
+fn asked(address: SocketAddr, id: &'static str, replies: &std::sync::mpsc::Sender<Reply>) {
     let replies = replies.clone();
     std::thread::spawn(move || {
-        let reply = request(
-            address,
-            &post(&format!("/models/{id}/v1/echo"), "{\"say\":\"hello\"}"),
+        let mut stream = TcpStream::connect(address).expect("the router is listening");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(60)))
+            .expect("a read timeout, so a hang fails rather than blocking the suite");
+        stream
+            .write_all(post(&format!("/models/{id}/v1/chat/completions"), "{}").as_bytes())
+            .expect("the request is sent");
+        let mut first = [0u8; 1];
+        let read = stream.read(&mut first).unwrap_or(0);
+        let began = Instant::now();
+        let mut text = String::from_utf8_lossy(&first[..read]).into_owned();
+        drop(stream.read_to_string(&mut text));
+        replies.send(Reply { id, began, text }).ok();
+    });
+}
+
+/// The next `count` replies, each checked to be a success, by the request
+/// they answered, in the order the router began serving them.
+fn served_in_order(answered: &std::sync::mpsc::Receiver<Reply>, count: usize) -> Vec<&'static str> {
+    let mut replies: Vec<Reply> = (0..count)
+        .map(|_| {
+            answered
+                .recv_timeout(Duration::from_secs(30))
+                .expect("every waiting request was answered")
+        })
+        .collect();
+    for reply in &replies {
+        assert_eq!(
+            status(&reply.text),
+            Some(200),
+            "{}:\n{}",
+            reply.id,
+            reply.text
         );
-        replies.send((id, reply)).ok();
+    }
+    replies.sort_by_key(|reply| reply.began);
+    replies.iter().map(|reply| reply.id).collect()
+}
+
+/// A router over `contended`, with gemma3 streaming and so holding its room.
+fn contended_and_streaming() -> (support::Serving, TcpStream) {
+    let serving = queued(
+        &contended(),
+        ModelsRoot::with(&[MODEL, SECOND_MODEL]),
+        Some(4096),
+        Duration::from_secs(30),
+    );
+    let streaming = start_stream(serving.address(), "/v1/chat/completions", STREAM);
+    (serving, streaming)
+}
+
+/// Waits until this many requests are in line for room.
+fn in_line(serving: &support::Serving, count: usize) {
+    settled(serving, &format!("{count} requests in line"), |serving| {
+        serving.waiting() == count
     });
 }
 
@@ -208,63 +271,64 @@ fn a_model_that_fits_is_answered_while_another_request_waits_for_room() {
     // Waiting for room used to hold the lock every admission takes, so a
     // model with room to spare queued behind a request waiting for somebody
     // else's -- for as long as that request waited.
-    let serving = queued(
-        &contended(),
-        ModelsRoot::with(&[MODEL, SECOND_MODEL]),
-        Some(4096),
-        Duration::from_secs(30),
-    );
-    let streaming = start_stream(serving.address(), "/v1/chat/completions", STREAM);
+    let (serving, streaming) = contended_and_streaming();
     let (replies, answered) = std::sync::mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
-    std::thread::sleep(Duration::from_millis(200));
+    in_line(&serving, 1);
     asked(serving.address(), "tiny", &replies);
 
-    let (first, reply) = answered
-        .recv_timeout(Duration::from_secs(20))
-        .expect("a request was answered");
     assert_eq!(
-        (first, status(&reply)),
-        ("tiny", Some(200)),
-        "the model that fits was answered while qwen38 still waited for \
-         gemma3's stream to end:\n{reply}"
+        served_in_order(&answered, 2),
+        ["tiny", "qwen38"],
+        "the model that fits was served while qwen38 still waited for \
+         gemma3's stream to end"
     );
-
-    let (second, reply) = answered
-        .recv_timeout(Duration::from_secs(10))
-        .expect("the waiting request was answered once the room freed up");
-    assert_eq!((second, status(&reply)), ("qwen38", Some(200)), "{reply}");
     drop(streaming);
 }
 
 #[test]
 fn requests_waiting_for_room_are_answered_in_the_order_they_asked() {
-    let serving = queued(
-        &contended(),
-        ModelsRoot::with(&[MODEL, SECOND_MODEL]),
-        Some(4096),
-        Duration::from_secs(30),
-    );
-    let streaming = start_stream(serving.address(), "/v1/chat/completions", STREAM);
+    let (serving, streaming) = contended_and_streaming();
     let (replies, answered) = std::sync::mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
-    std::thread::sleep(IN_LINE);
+    in_line(&serving, 1);
     asked(serving.address(), "third", &replies);
+    in_line(&serving, 2);
 
-    let order: Vec<_> = (0..2)
-        .map(|_| {
-            let (id, reply) = answered
-                .recv_timeout(Duration::from_secs(20))
-                .expect("every waiting request was answered");
-            assert_eq!(status(&reply), Some(200), "{id}:\n{reply}");
-            id
-        })
-        .collect();
     assert_eq!(
-        order,
+        served_in_order(&answered, 2),
         ["qwen38", "third"],
         "the request that asked first took the room first"
     );
+    assert_eq!(serving.waiting(), 0, "and nobody is left in line");
+    drop(streaming);
+}
+
+#[test]
+fn a_request_that_could_take_room_now_waits_its_turn_behind_an_earlier_one() {
+    // tiny is loaded and idle, and gemma3 streams beside it. qwen38 needs the
+    // room gemma3 holds, and waits. small could have room at once, by
+    // unloading tiny -- and joins the line instead, because qwen38 asked
+    // first.
+    let (serving, streaming) = contended_and_streaming();
+    let warm = request(
+        serving.address(),
+        &post("/models/tiny/v1/echo", "{\"say\":\"hello\"}"),
+    );
+    assert_eq!(status(&warm), Some(200), "{warm}");
+    let (replies, answered) = std::sync::mpsc::channel();
+    asked(serving.address(), "qwen38", &replies);
+    in_line(&serving, 1);
+    asked(serving.address(), "small", &replies);
+
+    in_line(&serving, 2);
+    assert!(
+        !serving.loaded().contains(&"small".to_owned()),
+        "small took no room while qwen38 waited: {:?}",
+        serving.loaded()
+    );
+    assert_eq!(served_in_order(&answered, 2).len(), 2, "both were served");
+    assert_eq!(serving.waiting(), 0, "and nobody is left in line");
     drop(streaming);
 }
 
@@ -282,18 +346,19 @@ fn a_request_waiting_when_the_catalog_is_reloaded_is_told_to_ask_again() {
     let streaming = start_stream(serving.address(), "/v1/chat/completions", STREAM);
     let (replies, answered) = std::sync::mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
-    std::thread::sleep(IN_LINE);
+    in_line(&serving, 1);
 
     let reloaded = request(serving.address(), &post("/reload", ""));
     assert_eq!(status(&reloaded), Some(200), "{reloaded}");
 
-    let (_, reply) = answered
+    let reply = answered
         .recv_timeout(Duration::from_secs(20))
         .expect("the waiting request was answered");
-    assert_eq!(status(&reply), Some(503), "{reply}");
+    assert_eq!(status(&reply.text), Some(503), "{}", reply.text);
     assert!(
-        reply.contains("reloaded"),
-        "and told why, so that asking again is the obvious next step:\n{reply}"
+        reply.text.contains("reloaded"),
+        "and told why, so that asking again is the obvious next step:\n{}",
+        reply.text
     );
     drop(streaming);
 }

@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::admission::Budget;
@@ -61,6 +62,9 @@ pub(super) struct Slots {
     admission: Mutex<Queue>,
     /// Rung whenever a model may have stopped being busy.
     freed: Freed,
+    /// How many requests are in line for room, readable without waiting
+    /// behind a load that holds the admission lock.
+    in_line: AtomicUsize,
     budget: Budget,
     wait: Wait,
 }
@@ -78,6 +82,7 @@ impl Slots {
             ),
             admission: Mutex::new(Queue::default()),
             freed: Freed::new(),
+            in_line: AtomicUsize::new(0),
             budget,
             wait,
         }
@@ -115,6 +120,11 @@ impl Slots {
     /// warns against. A caller asking this wants to report, not to serve.
     pub(super) fn loaded(&self, catalog: &Catalog) -> Vec<String> {
         self.snapshot(catalog, |entry, _| entry.id.clone())
+    }
+
+    /// How many requests are waiting in line for room right now.
+    pub(super) fn waiting(&self) -> usize {
+        self.in_line.load(Ordering::Relaxed)
     }
 
     /// The child already running for this entry, if there is a live one.

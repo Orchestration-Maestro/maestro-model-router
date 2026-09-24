@@ -135,6 +135,20 @@ mod tests {
     }
 
     #[test]
+    fn a_ring_already_heard_does_not_end_the_next_wait() {
+        let freed = Freed::new();
+        freed.ring();
+        let started = Instant::now();
+        freed.wait(freed.heard(), started + Duration::from_millis(200));
+        assert!(
+            started.elapsed() >= Duration::from_millis(200),
+            "a waiter that heard the last ring sleeps until the next, rather \
+             than spinning on the old one; waited {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
     fn a_ring_made_before_the_wait_is_not_slept_through() {
         let freed = Freed::new();
         let heard = freed.heard();

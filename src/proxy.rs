@@ -140,6 +140,12 @@ impl Router {
         self.shared.slots.loaded_ids(&self.shared.catalog())
     }
 
+    /// How many requests are waiting in line for room right now.
+    #[must_use]
+    pub fn waiting(&self) -> usize {
+        self.shared.slots.waiting()
+    }
+
     /// Residents the startup loader could not load, as `id: reason`.
     ///
     /// Empty when every resident loaded, and empty before [`Router::serve`]

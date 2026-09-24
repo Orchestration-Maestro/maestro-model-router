@@ -19,6 +19,7 @@
 
 use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::sync::{MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -62,6 +63,11 @@ impl Queue {
         let before = self.waiting.len();
         self.waiting.retain(|waiting| Some(*waiting) != ticket);
         self.waiting.len() != before
+    }
+
+    /// How many requests are in line.
+    fn len(&self) -> usize {
+        self.waiting.len()
     }
 }
 
@@ -128,6 +134,7 @@ impl Slots {
                 break Err(refused(entry, &held, self.wait.duration()));
             }
             queue.join(&mut ticket);
+            self.in_line.store(queue.len(), Ordering::Relaxed);
             drop(queue);
             self.freed.wait(heard, deadline);
             queue = self
@@ -137,6 +144,7 @@ impl Slots {
         };
         // Leaving the line lets the next in it look again, so it is rung for.
         if queue.leave(ticket) {
+            self.in_line.store(queue.len(), Ordering::Relaxed);
             self.freed.ring();
         }
         (queue, outcome)

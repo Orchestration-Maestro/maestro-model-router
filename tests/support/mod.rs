@@ -246,6 +246,12 @@ impl Serving {
         self.router.loaded()
     }
 
+    /// How many requests are waiting in line for room.
+    #[must_use]
+    pub fn waiting(&self) -> usize {
+        self.router.waiting()
+    }
+
     /// Residents the startup loader could not load.
     #[must_use]
     pub fn resident_failures(&self) -> Vec<String> {
