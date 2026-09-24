@@ -19,8 +19,9 @@ export PATH := home_directory() / ".cargo" / "bin" + path_sep + home_directory()
 # is actually running disagreeing with each other.
 #
 # `reload`, `serving` and `deploy` are the recipes in this file that are not
-# cross-platform: they act on a running service, which on this machine is a
-# systemd user unit. Every gate above them runs anywhere.
+# cross-platform: they act on a running router, and all but `reload` on its
+# service, which on this machine is a systemd user unit. Every gate above them
+# runs anywhere.
 unit := "model-router"
 
 # First in the file, deliberately: `just` with no arguments runs the first
@@ -72,22 +73,27 @@ doctor:
     @echo "prek    $(command -v prek)"
     @echo "rustc   $(rustc --version)"
 
-# A restart, because that is what re-reading the catalog costs today: the
-# router reads the file once at startup and holds it for the life of the
-# process. Every loaded model is unloaded and the next request for one starts
-# it again -- cheap when nothing is loaded, not cheap when something is, and
-# `just serving` says which before you run this.
+# `POST /reload` rather than a restart: the router reads the catalog file
+# again and nothing running is stopped. The reply names what changed, and
+# `superseded` names the entries whose running child keeps the arguments it
+# was started with until it is next loaded. A catalog that does not parse is
+# refused and the one serving is untouched, so a file saved half-way through
+# cannot take the router down.
 #
-# `systemctl restart` rather than a signal: SIGHUP already ends this process
-# rather than reloading it, which is why this is a recipe and not a kill.
+# The address is a parameter because the unit file, not this one, says where
+# the router listens. A key in `MAESTRO_API_KEY` is passed on standard input
+# rather than as an argument, where any process on the machine could read it.
 
-# Restart the router so it serves the catalog as it now reads.
-reload:
-    systemctl --user restart {{unit}}
-    @systemctl --user --no-pager --lines=0 status {{unit}} | head -3
+# Make the running router read its catalog again.
+reload address="127.0.0.1:8080":
+    #!/usr/bin/env sh
+    set -eu
+    { [ -z "${MAESTRO_API_KEY:-}" ] || printf 'Authorization: Bearer %s\n' "$MAESTRO_API_KEY"; } \
+        | curl --silent --show-error --fail-with-body -X POST -H @- "http://{{address}}/reload"
+    echo
 
-# The two facts `reload` costs you: whether the unit is up, and what it is
-# holding. A reload with nothing loaded interrupts nothing.
+# The two facts a restart costs you: whether the unit is up, and what it is
+# holding. A restart with nothing loaded interrupts nothing.
 #
 # Read from the processes rather than from the router, because this has to
 # answer when the router is the thing that is wrong, and because the address

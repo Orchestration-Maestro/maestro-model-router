@@ -169,11 +169,22 @@ pub(super) fn json(
     value: &serde_json::Value,
     head_only: bool,
 ) -> std::io::Result<()> {
+    text(stream, "application/json", &value.to_string(), head_only)
+}
+
+/// A body the router authored, of whatever type it says, with this module's
+/// framing -- for the one answer that is not JSON, a Prometheus scrape.
+pub(super) fn text(
+    stream: &TcpStream,
+    content_type: &str,
+    body: &str,
+    head_only: bool,
+) -> std::io::Result<()> {
     Reply {
         status: 200,
-        content_type: Some("application/json"),
+        content_type: Some(content_type),
         headers: Vec::new(),
-        body: &value.to_string(),
+        body,
         head_only,
     }
     .write(stream)

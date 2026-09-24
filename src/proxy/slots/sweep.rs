@@ -64,6 +64,22 @@ impl Slots {
         .collect()
     }
 
+    /// Unloads this entry's child now unless something is reading from it,
+    /// and says whether nothing is left running.
+    ///
+    /// An operator's sweep of one entry, taken the same way as the idle one,
+    /// so a child that gained a reader since anybody looked is left to that
+    /// reader rather than ended under it. The child is dropped once the
+    /// slot's guard is released, for the reason [`Slots::swept`] gives.
+    pub(in super::super) fn let_go(&self, id: &str) -> bool {
+        match take_if_idle(&self.slot(id), |_| true) {
+            Take::Taken(child) => drop(child),
+            Take::Empty => {}
+            Take::Busy => return false,
+        }
+        true
+    }
+
     /// Runs `take` against each named slot, drops whatever came out once
     /// that slot's guard has been released, and names what went alongside
     /// whatever `take` said about it.

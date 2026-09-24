@@ -11,6 +11,11 @@ use super::Slots;
 use std::sync::PoisonError;
 
 impl Slots {
+    /// The ceiling models are unloaded to stay under, when there is one.
+    pub(in super::super) fn budget_mib(&self) -> Option<u32> {
+        self.budget.limit_mib()
+    }
+
     /// The identifiers of the entries holding a child, in catalog order.
     pub(in super::super) fn loaded_ids(&self, catalog: &Catalog) -> Vec<String> {
         self.snapshot(catalog, |entry, _| entry.id.clone())

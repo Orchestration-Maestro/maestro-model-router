@@ -16,6 +16,8 @@
 
 use std::net::TcpStream;
 
+use crate::catalog::Entry;
+
 use super::super::refusal::{Cause, Refusal};
 use super::Shared;
 use super::reply;
@@ -145,29 +147,76 @@ pub(super) fn properties(stream: &TcpStream, head_only: bool) -> std::io::Result
 /// Never `HEAD`: the method set for this endpoint is `POST` alone, so a
 /// caller that got here sent one.
 pub(super) fn reload(stream: &TcpStream, shared: &Shared) -> std::io::Result<()> {
-    match shared.reload() {
-        Ok(changed) => reply::json(
-            stream,
-            &serde_json::json!({
+    let outcome = shared
+        .reload()
+        .map(|changed| {
+            serde_json::json!({
                 "object": "reload",
                 "added": changed.added,
                 "removed": changed.removed,
                 "superseded": changed.superseded,
-            }),
-            false,
-        ),
+            })
+        })
         // The caller's mistake rather than the router's: the file they asked
         // it to read is the thing that is wrong, and the router is still
         // serving perfectly well from the one it already had.
-        Err(reason) => reply::refuse(
-            stream,
-            &Refusal::new(
+        .map_err(|reason| {
+            Refusal::new(
                 Cause::CatalogUnreadable,
                 format!(
                     "the catalog was not reloaded and the one already serving \
                      is untouched: {reason}"
                 ),
+            )
+        });
+    answered(stream, outcome)
+}
+
+/// Starts the entry's child if it is not running, and replies once it is
+/// ready.
+///
+/// Through the admission a request takes, so a load evicts what a request
+/// would and is refused for want of room as a request would be. The reply
+/// waits for the model rather than for the decision, unlike llama.cpp's own:
+/// a caller told `success` can ask the model at once.
+pub(super) fn load(stream: &TcpStream, shared: &Shared, entry: &Entry) -> std::io::Result<()> {
+    let outcome = shared.child(entry).map(|_| done()).map_err(Refusal::from);
+    answered(stream, outcome)
+}
+
+/// Ends the entry's child unless something is reading from it.
+///
+/// A model answering a request is refused rather than ended: cutting off a
+/// caller mid-answer is not what an operator freeing memory means. One that
+/// is not running is already what was asked for.
+pub(super) fn unload(stream: &TcpStream, shared: &Shared, entry: &Entry) -> std::io::Result<()> {
+    let outcome = if shared.slots.let_go(&entry.id) {
+        Ok(done())
+    } else {
+        Err(Refusal::new(
+            Cause::ModelBusy,
+            format!(
+                "'{}' is answering a request; unload it once that ends",
+                entry.id
             ),
-        ),
+        ))
+    };
+    answered(stream, outcome)
+}
+
+/// What llama.cpp answers a load or an unload with.
+fn done() -> serde_json::Value {
+    serde_json::json!({ "success": true })
+}
+
+/// The reply for what one of the router's own changes came to: what it did,
+/// or why it did not.
+fn answered(
+    stream: &TcpStream,
+    outcome: Result<serde_json::Value, Refusal>,
+) -> std::io::Result<()> {
+    match outcome {
+        Ok(value) => reply::json(stream, &value, false),
+        Err(refusal) => reply::refuse(stream, &refusal),
     }
 }

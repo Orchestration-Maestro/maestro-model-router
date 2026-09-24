@@ -57,6 +57,8 @@ pub(super) enum Cause {
     RoomContended,
     /// Nothing can be unloaded to make room.
     NoRoom,
+    /// The model asked to be unloaded is answering a request.
+    ModelBusy,
     /// The catalog file could not be read again, so nothing was reloaded.
     ///
     /// The caller's side of the conversation rather than the router's: the
@@ -90,6 +92,7 @@ impl Cause {
             Self::StartupTimeout => (504, "startup_timeout"),
             Self::RoomContended => (503, "room_contended"),
             Self::NoRoom => (503, "insufficient_room"),
+            Self::ModelBusy => (409, "model_busy"),
             Self::CatalogUnreadable => (400, "catalog_unreadable"),
             Self::Unauthorized => (401, "invalid_api_key"),
             Self::OriginNotAllowed => (403, "origin_not_allowed"),

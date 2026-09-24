@@ -248,6 +248,69 @@ requirement -- different addresses do not collide on the same port -- but a
 distinct port tells an operator reading `ss -tlnp`, a log line or a firewall
 rule which surface a request arrived on without having to read the address.
 
+### Reloading the catalog
+
+An edited catalog is served without a restart:
+
+```sh
+just reload                 # or: curl -X POST http://127.0.0.1:8080/reload
+```
+
+```json
+{"object":"reload","added":["qwen3-8b"],"removed":[],"superseded":["gemma3"]}
+```
+
+Nothing running is stopped. An entry the file gained can be asked for at once,
+and one it lost is refused from then on. `superseded` names the entries whose
+child was already running when its definition changed or was removed: the
+process keeps the arguments it was started with until it is next loaded, so
+until then the catalog and the process disagree. A file that cannot be read or
+does not parse is refused with `400` and `catalog_unreadable`, and the catalog
+already serving is untouched. A request waiting for room when the catalog
+changes is told to ask again.
+
+Only `POST` reloads. A key set in `MAESTRO_API_KEY` is required for it as for
+any other request, and `just reload` sends it.
+
+### Loading and unloading on request
+
+A model is loaded by the first request for it and let go when it sits idle,
+when room is wanted, or when the router stops. Two endpoints do either now,
+for warming a model before the request that would pay for its load, or for
+giving memory back before the idle window would:
+
+```sh
+curl -X POST http://127.0.0.1:8080/models/load -d '{"model":"gemma3"}'
+curl -X POST http://127.0.0.1:8080/models/unload -d '{"model":"gemma3"}'
+```
+
+Both answer `{"success":true}`. The paths and bodies are llama.cpp's own router
+mode, so a llama.cpp client's load and unload work against this router too.
+
+A load replies once the model is ready, not once the load has begun, so a
+caller told `success` can ask the model at once. It goes through the same
+admission as a request: it unloads what a request would to make room, and is
+refused as a request would be when there is none. An unload of a model that
+is answering a request is refused with `409` rather than cutting that caller
+off, and one of a model that is not running has nothing to do and succeeds.
+
+### Metrics
+
+`GET /metrics` answers in the text format Prometheus scrapes, and starts
+nothing:
+
+| Gauge | Labels | Value |
+| --- | --- | --- |
+| `model_router_model_loaded` | `model` | `1` while a child holds the entry, else `0` |
+| `model_router_model_declared_mib` | `model` | what the catalog estimates the entry holds |
+| `model_router_model_held_mib` | `model` | what a loaded entry was measured holding; absent when nothing was measured |
+| `model_router_requests_waiting` | | requests in line for room |
+| `model_router_memory_budget_mib` | | the budget; absent when there is none |
+| `model_router_build_info` | `version`, `commit` | `1`, naming the build that answers |
+
+Each is read from the state admission decides with, so a graph shows what the
+router believed it was holding when the machine ran short.
+
 ### Two ways to name a model
 
 Each model is reached at its own endpoint, so a request needs no model field to
@@ -454,6 +517,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | the child misses its startup budget | `504`, naming the budget | `startup_timeout` |
 | the room is held by a request that reached it first | `503`, with `Retry-After` | `room_contended` |
 | nothing can be unloaded to make room | `503`, naming what is holding the memory | `insufficient_room` |
+| an unload names a model that is answering a request | `409` | `model_busy` |
 
 Once a response has begun there is no status left to send, so a failure after
 that point closes the connection rather than pretending it can still answer.

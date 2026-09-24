@@ -18,7 +18,7 @@ mod own;
 use super::endpoint::Endpoint;
 use super::head::{Head, Length};
 use super::refusal::{Cause, Refusal};
-use super::{Shared, body, head, relay, reply};
+use super::{Shared, body, head, metrics, relay, reply};
 
 /// Answers one connection.
 pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
@@ -77,7 +77,7 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
     // or started on a child's behalf: saying what could be served is never a
     // reason to start serving it.
     //
-    // All three honour `HEAD` the same way, because a client sizing a buffer
+    // All of them honour `HEAD` the same way, because a client sizing a buffer
     // from the declared length is doing so for the same reason whichever of
     // them it asked.
     let head_only = request.method == "HEAD";
@@ -85,35 +85,33 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
         Endpoint::Listing => return reply::listing(stream, shared, head_only),
         Endpoint::Catalogue => return own::catalogue(stream, shared, head_only),
         Endpoint::Properties => return own::properties(stream, head_only),
+        Endpoint::Metrics => return metrics::answer(stream, shared, head_only),
         // Answered here with the rest of the router's own paths, and for the
         // same reason: no child is involved. It is the one of them that
         // changes something, which is why it is the one that takes `POST`.
         Endpoint::Reload => return own::reload(stream, shared),
-        Endpoint::Dedicated { .. } | Endpoint::Generic { .. } => {}
+        _ => {}
     }
 
     // Which model answers, and the body if reading it was what said so. The
     // dedicated endpoint names its model in the path and never looks, which
-    // is why only one of these two arms buffers anything.
-    let (wanted, buffered) = match &request.endpoint {
-        Endpoint::Dedicated { id, .. } => (id.clone(), None),
-        Endpoint::Listing | Endpoint::Catalogue | Endpoint::Properties | Endpoint::Reload => {
-            unreachable!("answered above")
+    // is why only one of these two arms buffers anything. The other is every
+    // endpoint not answered above: the generic one, a load and an unload.
+    let (wanted, buffered) = if let Endpoint::Dedicated { id, .. } = &request.endpoint {
+        (id.clone(), None)
+    } else {
+        let declared = match declared_body(&request.length) {
+            Ok(declared) => declared,
+            Err(refusal) => return reply::refuse(stream, &refusal),
+        };
+        // Told to send now and not before: a body refused for its length is
+        // one the caller was spared sending.
+        if request.expects_continue {
+            reply::proceed(stream)?;
         }
-        Endpoint::Generic { .. } => {
-            let declared = match declared_body(&request.length) {
-                Ok(declared) => declared,
-                Err(refusal) => return reply::refuse(stream, &refusal),
-            };
-            // Told to send now and not before: a body refused for its length
-            // is one the caller was spared sending.
-            if request.expects_continue {
-                reply::proceed(stream)?;
-            }
-            match body::read(&mut reader, declared) {
-                Ok((bytes, model)) => (model, Some(bytes)),
-                Err(refusal) => return reply::refuse(stream, &refusal),
-            }
+        match body::read(&mut reader, declared) {
+            Ok((bytes, model)) => (model, Some(bytes)),
+            Err(refusal) => return reply::refuse(stream, &refusal),
         }
     };
 
@@ -130,6 +128,11 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
             ),
         );
     };
+    match request.endpoint {
+        Endpoint::Load => return own::load(stream, shared, entry),
+        Endpoint::Unload => return own::unload(stream, shared, entry),
+        _ => {}
+    }
 
     // The causes are distinguished by launch::Failure's variants rather than
     // by reading its message, so the wording of an error is not a
@@ -179,7 +182,9 @@ fn framing(request: &Head) -> Result<(), Refusal> {
             Endpoint::Listing => "the model listing".to_owned(),
             Endpoint::Catalogue => "the catalogue".to_owned(),
             Endpoint::Properties => "the server's properties".to_owned(),
+            Endpoint::Metrics => "the metrics".to_owned(),
             Endpoint::Reload => "the reload".to_owned(),
+            Endpoint::Load | Endpoint::Unload => "a load or an unload".to_owned(),
         };
         return Err(Refusal::new(
             Cause::ChunkedBody,
