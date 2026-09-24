@@ -104,11 +104,7 @@ fn listening(running: &mut Running, port: u16) -> Listening {
 fn serving(arguments: &[&str]) -> (Running, u16, u16) {
     let mut lost_once = false;
     loop {
-        let port = free_port();
-        let port_text = port.to_string();
-        let mut invocation = vec!["--port", port_text.as_str()];
-        invocation.extend_from_slice(arguments);
-        let mut running = start(&invocation);
+        let (mut running, port) = on_a_free_port(arguments);
         match listening(&mut running, port) {
             Listening::Ready(code) => return (running, port, code),
             // A failed bind is the only exit with code 1 these tests can
@@ -180,18 +176,41 @@ fn a_path_the_stub_does_not_serve_is_not_found() {
     );
 }
 
+/// Starts the stub with `arguments` on a port the operating system says is
+/// free, and says which.
+fn on_a_free_port(arguments: &[&str]) -> (Running, u16) {
+    let port = free_port();
+    let port_text = port.to_string();
+    let mut invocation = vec!["--port", port_text.as_str()];
+    invocation.extend_from_slice(arguments);
+    (start(&invocation), port)
+}
+
+/// How the stub started with `arguments` on a free port exited.
+fn exit_status(arguments: &[&str]) -> std::process::ExitStatus {
+    let (mut running, _) = on_a_free_port(arguments);
+    running.0.wait().expect("the stub exits on its own")
+}
+
 #[test]
 fn exit_after_exits_with_the_requested_code() {
-    let (mut running, _, _) = serving(&[
+    // The exit alone is waited for. A stub that lives 250 ms can be gone
+    // before a readiness poll lands -- Windows takes its time refusing a
+    // connection to a port nobody listens on yet -- and a poll would report
+    // as never listening a stub that did.
+    let arguments = [
         "--ready-after",
         "60000",
         "--exit-after",
         "250",
         "--exit-code",
         "9",
-    ]);
-
-    let status = running.0.wait().expect("the stub exits on its own");
+    ];
+    let mut status = exit_status(&arguments);
+    if status.code() == Some(1) {
+        // free_port's race, lost once: started again, as `serving` does.
+        status = exit_status(&arguments);
+    }
     assert_eq!(
         status.code(),
         Some(9),
