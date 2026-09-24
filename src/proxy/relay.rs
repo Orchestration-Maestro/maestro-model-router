@@ -119,9 +119,11 @@ fn copy_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
     let watch = watch(downstream, upstream, &relaying);
     relay_response(upstream, downstream);
     relaying.store(false, Ordering::Relaxed);
-    // Ends the caller's connection now rather than when the last handle on it
-    // goes, and wakes the watch where the platform lets a shutdown do that.
-    drop(downstream.shutdown(Shutdown::Both));
+    // Wakes the watch where the platform lets a shutdown do that. Only the
+    // reading half: the caller must not see its reply end while the model is
+    // still held, or a caller quick to ask again finds it busy. The owner of
+    // the connection ends it, once it has let the model go.
+    drop(downstream.shutdown(Shutdown::Read));
     if let Some(watch) = watch {
         drop(watch.join());
     }
@@ -187,5 +189,62 @@ fn relay_response(upstream: &mut TcpStream, downstream: &mut TcpStream) {
             // socket, which stops the child generating.
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::TcpListener;
+
+    use super::*;
+
+    /// Both ends of one loopback connection.
+    fn connection() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let address = listener.local_addr().expect("its address");
+        let near = TcpStream::connect(address).expect("a connection");
+        let (far, _) = listener.accept().expect("the connection, accepted");
+        (near, far)
+    }
+
+    #[test]
+    fn the_caller_sees_its_reply_end_only_once_its_connection_is_let_go() {
+        // The connection's owner releases the model before it lets the
+        // connection go, so a caller that reads to the end finds the model
+        // idle. A relay that ended the connection itself did so while the
+        // model was still held, and a caller quick to ask again found it busy.
+        let (mut upstream, mut child) = connection();
+        child
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+            .expect("the reply, written");
+        drop(child);
+        let (mut downstream, mut caller) = connection();
+
+        copy_response(&mut upstream, &mut downstream);
+
+        caller
+            .set_read_timeout(Some(Duration::from_millis(300)))
+            .expect("a read timeout");
+        let mut reply = Vec::new();
+        let mut buffer = [0u8; 256];
+        let ended = loop {
+            match caller.read(&mut buffer) {
+                Ok(0) => break true,
+                Ok(read) => reply.extend_from_slice(&buffer[..read]),
+                Err(_) => break false,
+            }
+        };
+        assert!(reply.ends_with(b"ok"), "the whole reply arrived: {reply:?}");
+        assert!(
+            !ended,
+            "the caller saw its connection end while its owner still held it"
+        );
+
+        drop(downstream);
+        assert_eq!(
+            caller.read(&mut buffer).ok(),
+            Some(0),
+            "and saw it end once it was let go"
+        );
     }
 }
