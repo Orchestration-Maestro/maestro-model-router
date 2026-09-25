@@ -105,3 +105,36 @@ fn number<T: FromStr>(value: &str, flag: &str) -> Result<T, String> {
         .parse()
         .map_err(|_| format!("{flag} takes a number, not '{value}'"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed(arguments: &[&str]) -> Options {
+        parse(arguments.iter().map(|argument| (*argument).to_owned())).expect("parses")
+    }
+
+    #[test]
+    fn every_flag_the_stub_knows_sets_what_it_names() {
+        // Each value differs from its default, so a flag that was stepped
+        // over as unknown leaves a field this test sees unchanged.
+        let options = parsed(&[
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8123",
+            "--exit-after",
+            "250",
+            "--never-bind-marker",
+            "/tmp/a-marker",
+        ]);
+
+        assert_eq!(options.host, "0.0.0.0");
+        assert_eq!(options.port, 8123);
+        assert_eq!(options.exit_after, Some(Duration::from_millis(250)));
+        assert_eq!(
+            options.never_bind_marker,
+            Some(PathBuf::from("/tmp/a-marker"))
+        );
+    }
+}
