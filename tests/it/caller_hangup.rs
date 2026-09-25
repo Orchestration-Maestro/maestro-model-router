@@ -12,8 +12,9 @@
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crate::support::poll::eventually;
 use crate::support::{MODEL, ModelsRoot, get, post, queued, request, settled, status};
 
 /// How long the first model stays silent. Far longer than the test waits, so
@@ -66,24 +67,23 @@ fn a_caller_that_hangs_up_during_the_silence_releases_the_model() {
         .expect("a read timeout");
     let mut byte = [0u8; 1];
     let heard = caller.read(&mut byte);
+    let silent = matches!(
+        &heard,
+        Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
+    );
     assert!(
-        matches!(&heard, Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)),
+        silent,
         "the model says nothing while it thinks; the caller heard {heard:?}"
     );
     drop(caller);
 
-    let hung_up = Instant::now();
     let mut reply = String::new();
-    while hung_up.elapsed() < Duration::from_secs(3) {
+    let released = eventually(Duration::from_secs(3), Duration::from_millis(100), || {
         reply = request(serving.address(), &get("/models/other/v1/echo"));
-        if status(&reply) == Some(200) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    assert_eq!(
-        status(&reply),
-        Some(200),
+        status(&reply) == Some(200)
+    });
+    assert!(
+        released,
         "within three seconds of its caller hanging up, the silent model is \
          no longer busy, so the other model can take its room:\n{reply}"
     );

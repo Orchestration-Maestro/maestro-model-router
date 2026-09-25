@@ -30,13 +30,14 @@
 //! stream ending, and half of three seconds is a margin that sweep timing
 //! and sleep overshoot cannot blur past the stream-plus-window floor.
 //!
-//! `QUICK_WINDOW` stays short, for the two tests that sleep a multiple of
+//! `QUICK_WINDOW` stays short, for the two tests that watch a multiple of
 //! it to prove a *non*-event -- a resident or an unconfigured window never
 //! unloading. Multiplying `WINDOW` there instead would turn a fast proof
 //! into one lasting several seconds for no gain.
 
 use std::time::{Duration, Instant};
 
+use crate::support::poll::eventually;
 use crate::support::{MODEL, ModelsRoot, get, post, request, settled, status, windowed};
 
 /// The window the unloading tests use. Its width buys discrimination for
@@ -44,10 +45,13 @@ use crate::support::{MODEL, ModelsRoot, get, post, request, settled, status, win
 /// see the module prose.
 const WINDOW: Duration = Duration::from_secs(3);
 
-/// The window the two tests that sleep a multiple of it to prove a
+/// The window the two tests that watch a multiple of it to prove a
 /// non-event use, kept short so proving "never unloaded" stays fast rather
 /// than scaling with `WINDOW`.
 const QUICK_WINDOW: Duration = Duration::from_millis(200);
+
+/// How often the two non-event tests look at what is loaded while they watch.
+const WATCH_EVERY: Duration = Duration::from_millis(20);
 
 /// The resident's weights, beside the on-demand entry's.
 const RESIDENT_MODEL: &str = "cache/qwen/qwen3-4b.gguf";
@@ -117,8 +121,8 @@ fn an_on_demand_entry_idle_past_the_window_is_unloaded() {
     // window is out, or racing a second request against the reaper -- would
     // assert that this thread acts inside the window, which a stalled
     // runner refutes at any width. See the module prose.
-    settled(&serving, "unloaded the idle entry", |s| {
-        !s.loaded().iter().any(|id| id == "gemma3")
+    settled(&serving, "unloaded the idle entry", |serving| {
+        !serving.loaded().iter().any(|id| id == "gemma3")
     });
 }
 
@@ -134,8 +138,8 @@ fn the_next_request_for_an_unloaded_entry_is_answered_and_it_is_loaded_again() {
     let first = request(serving.address(), &get("/models/gemma3/v1/echo"));
     assert_eq!(status(&first), Some(200), "the entry answers:\n{first}");
 
-    settled(&serving, "unloaded the idle entry", |s| {
-        !s.loaded().iter().any(|id| id == "gemma3")
+    settled(&serving, "unloaded the idle entry", |serving| {
+        !serving.loaded().iter().any(|id| id == "gemma3")
     });
 
     // A relayed 200 on the dedicated path is the proof of "loaded again":
@@ -185,17 +189,19 @@ fn a_child_that_exits_on_its_own_is_swept_from_its_slot_whatever_its_residency()
 
     // Seen loaded first, or the emptiness below proves nothing: a slot that
     // was never filled is empty for a reason this test is not about.
-    settled(&serving, "loaded its resident", |s| {
-        s.loaded().iter().any(|id| id == "resident")
+    settled(&serving, "loaded its resident", |serving| {
+        serving.loaded().iter().any(|id| id == "resident")
     });
 
     // A resident is never a candidate for idle unloading, so only a sweep
     // that notices the process is gone can empty this slot. Until it does,
     // the dead child holds its estimate against the budget and sits
     // unreaped, and \"always warm\" is a slot that will never answer.
-    settled(&serving, "emptied the slot of the child that exited", |s| {
-        !s.loaded().iter().any(|id| id == "resident")
-    });
+    settled(
+        &serving,
+        "emptied the slot of the child that exited",
+        |serving| !serving.loaded().iter().any(|id| id == "resident"),
+    );
 
     let reply = request(serving.address(), &get("/models/resident/v1/echo"));
     assert_eq!(
@@ -214,17 +220,19 @@ fn a_resident_outlives_the_window_and_is_still_named() {
         QUICK_WINDOW,
     );
 
-    settled(&serving, "loaded its resident", |s| {
-        s.loaded().iter().any(|id| id == "resident")
+    settled(&serving, "loaded its resident", |serving| {
+        serving.loaded().iter().any(|id| id == "resident")
     });
 
-    // Several sweeps' worth of time, so a resident that were mistakenly
-    // reapable would already be gone. Against `QUICK_WINDOW` rather than
-    // `WINDOW`, so proving a non-event stays fast.
-    std::thread::sleep(QUICK_WINDOW * 6);
+    // Watched for several sweeps' worth of time, so a resident that were
+    // mistakenly reapable would be seen to go. Against `QUICK_WINDOW` rather
+    // than `WINDOW`, so proving a non-event stays fast.
+    let unloaded = eventually(QUICK_WINDOW * 6, WATCH_EVERY, || {
+        !serving.loaded().iter().any(|id| id == "resident")
+    });
 
     assert!(
-        serving.loaded().iter().any(|id| id == "resident"),
+        !unloaded,
         "a resident is never a candidate, however long it sits idle: {:?}",
         serving.loaded()
     );
@@ -242,12 +250,14 @@ fn with_no_window_configured_an_entry_idle_far_past_any_window_is_still_named() 
     let reply = request(serving.address(), &get("/models/gemma3/v1/echo"));
     assert_eq!(status(&reply), Some(200), "the entry answers:\n{reply}");
 
-    // Far past any window this file uses, against `QUICK_WINDOW` rather than
-    // `WINDOW`, so proving a non-event stays fast.
-    std::thread::sleep(QUICK_WINDOW * 6);
+    // Watched far past any window this file uses, against `QUICK_WINDOW`
+    // rather than `WINDOW`, so proving a non-event stays fast.
+    let unloaded = eventually(QUICK_WINDOW * 6, WATCH_EVERY, || {
+        !serving.loaded().iter().any(|id| id == "gemma3")
+    });
 
     assert!(
-        serving.loaded().iter().any(|id| id == "gemma3"),
+        !unloaded,
         "no window configured means no reaper, however long anything sits \
          idle: {:?}",
         serving.loaded()
@@ -280,7 +290,7 @@ fn last_used_is_stamped_when_a_relay_ends_rather_than_when_it_started() {
     settled(
         &serving,
         "unloaded the entry once it had actually gone idle",
-        |s| !s.loaded().iter().any(|id| id == "gemma3"),
+        |serving| !serving.loaded().iter().any(|id| id == "gemma3"),
     );
 
     // The proof is a lower bound, which a slow machine can only widen. The

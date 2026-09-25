@@ -6,7 +6,7 @@
 //! repository-relative Markdown link and asserts its target exists.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::common::{has_extension, repo_root, sources};
 
@@ -56,7 +56,7 @@ fn link_targets(text: &str) -> Vec<String> {
 }
 
 /// The path a link resolves to, or `None` when this gate does not own it.
-fn resolved(document: &Path, target: &str) -> Option<std::path::PathBuf> {
+fn resolved(document: &Path, target: &str) -> Option<PathBuf> {
     if is_external(target) {
         return None;
     }
@@ -73,7 +73,7 @@ fn no_document_links_to_a_missing_file() {
     let root = repo_root();
     let documents: Vec<_> = sources()
         .into_iter()
-        .filter(|p| has_extension(p, &["md"]))
+        .filter(|path| has_extension(path, &["md"]))
         .collect();
     assert!(!documents.is_empty(), "no document was scanned");
 
