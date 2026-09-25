@@ -4,7 +4,7 @@
 //! send, and a child is a separate process that nothing in the operating
 //! system ends when its parent does. So this drives the real binary rather
 //! than the library: the handler that turns a signal into `Router::stop` lives
-//! in `main`, and only a process can be signalled.
+//! in the binary's `serving` module, and only a process can be signalled.
 //!
 //! Unix only, and not for want of trying. There is no portable way to send a
 //! console control event to another process from a test: `GenerateConsoleCtrlEvent`
@@ -83,5 +83,11 @@ fn a_terminated_router_ends_its_children_and_exits_cleanly() {
     assert!(
         said.contains("ended 1 child"),
         "the router says how many children it ended on the way out:\n{said}"
+    );
+    // The binary hands the library a voice that writes to its own standard
+    // output; without it the router loads models and says nothing.
+    assert!(
+        said.contains("gemma3: loading, estimated at 512 MiB") && said.contains("gemma3: ready in"),
+        "the router says what it loaded, and what it cost:\n{said}"
     );
 }
