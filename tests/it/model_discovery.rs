@@ -247,6 +247,21 @@ fn a_root_with_nothing_to_find_reads_as_the_catalog_alone() {
     );
 }
 
+#[test]
+fn every_entry_the_catalog_names_is_counted_as_declared() {
+    let scratch = populated("discovery-declared");
+    let catalog = format!("{CATALOG}[models.beta]\npath = \"b/Other-Model.gguf\"\n");
+
+    let reading = Catalog::read(&catalog, scratch.path()).expect("a usable catalog");
+
+    assert_eq!(reading.declared(), 2);
+    assert!(
+        reading.summary().contains("2 entries from the catalog"),
+        "{}",
+        reading.summary()
+    );
+}
+
 /// The point of all of the above: a file that was only on disk answers.
 #[test]
 fn a_discovered_entry_is_served_like_any_other() {

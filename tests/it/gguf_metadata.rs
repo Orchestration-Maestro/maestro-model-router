@@ -65,6 +65,46 @@ fn a_per_layer_setting_is_read_as_its_largest_value() {
 }
 
 #[test]
+fn an_array_that_is_not_per_layer_is_stepped_over_rather_than_kept() {
+    let scratch = Scratch::new("gguf-other-array");
+    let path = scratch.path().join("model.gguf");
+    Gguf::model("qwen3", 28, 40_960, 1024)
+        .with(
+            "qwen3.rope.dimension_sections",
+            Value::U32s(vec![24, 20, 20]),
+        )
+        .write(&path, 0);
+
+    let metadata = Metadata::read(&path).expect("a well-formed file is read");
+
+    assert_eq!(metadata.of_model("rope.dimension_sections"), None);
+    assert_eq!(metadata.per_layer("rope.dimension_sections"), None);
+}
+
+#[test]
+fn a_per_layer_array_as_long_as_the_limit_is_read() {
+    // The most elements the reader takes before calling an array corrupt.
+    const LIMIT: usize = 1 << 20;
+    let scratch = Scratch::new("gguf-limit");
+    let path = scratch.path().join("model.gguf");
+    let mut heads = vec![4; LIMIT];
+    heads[LIMIT - 1] = 8;
+    Gguf::model("deci", 4, 4096, 256)
+        .with("deci.attention.head_count_kv", Value::U32s(heads))
+        .write(&path, 0);
+
+    let metadata = Metadata::read(&path).expect("the limit itself is not refused as corrupt");
+
+    assert_eq!(metadata.of_model("attention.head_count_kv"), Some(8));
+    assert_eq!(
+        metadata
+            .per_layer("attention.head_count_kv")
+            .map(<[u64]>::len),
+        Some(LIMIT)
+    );
+}
+
+#[test]
 fn every_value_type_is_stepped_over_to_reach_the_keys_after_it() {
     let scratch = Scratch::new("gguf-types");
     let path = scratch.path().join("model.gguf");

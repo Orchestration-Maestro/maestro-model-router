@@ -199,6 +199,37 @@ fn every_error_is_reported_not_only_the_first() {
     assert!(report.contains("beta"), "the second entry too:\n{report}");
 }
 
+#[test]
+fn each_problem_is_said_on_a_line_of_its_own() {
+    let text = "version = 1\n\
+                [models.alpha]\ncontext_size = 0\ncolour = \"red\"\n";
+    let report = Catalog::parse(text).expect_err("the entry is invalid");
+    assert!(report.problems().len() > 1, "{report}");
+    assert_eq!(report.to_string(), report.problems().join("\n"));
+}
+
+#[test]
+fn a_runtime_may_carry_digits_and_hyphens() {
+    let text = "version = 1\n\
+                [models.alpha]\npath = \"a.gguf\"\ncontext_size = 4096\n\
+                memory_estimate_mib = 512\nruntime = \"rocm-6\"\n";
+    let catalog = Catalog::parse(text).expect("a plain binary suffix is accepted");
+    assert_eq!(
+        catalog.entry("alpha").expect("alpha").runtime.as_deref(),
+        Some("rocm-6")
+    );
+}
+
+#[test]
+fn a_catalog_without_a_version_is_refused() {
+    let text = "[models.alpha]\npath = \"a.gguf\"\ncontext_size = 4096\n\
+                memory_estimate_mib = 512\n";
+    let report = Catalog::parse(text)
+        .expect_err("the version is required")
+        .to_string();
+    assert!(report.contains("version"), "{report}");
+}
+
 /// One bad entry can be wrong in several ways at once, and a reader fixing it
 /// should see all of them before running the tool again.
 #[test]
@@ -321,6 +352,14 @@ fn a_machine_anchored_path_cannot_be_represented() {
             "the constructor must refuse '{anchored}'"
         );
     }
+}
+
+#[test]
+fn a_colon_after_anything_but_a_letter_is_not_a_drive() {
+    assert!(
+        RelativePath::new("7:a.gguf").is_ok(),
+        "only a letter before the colon names a drive"
+    );
 }
 
 #[test]
