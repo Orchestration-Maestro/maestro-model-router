@@ -175,6 +175,10 @@ in place.
 │   ├── serving.rs                                                 # The serve command: every entry in a catalog, served until the process is
 │   ├── startup.rs                                                 # What the router says about memory before it serves anything
 │   └── voice.rs                                                   # Where the router's own lines for its operator go
+├── supply-chain/                                                  # cargo-vet audits, configuration and imports
+│   ├── audits.toml                                                # cargo-vet audits file
+│   ├── config.toml                                                # cargo-vet config file
+│   └── imports.lock                                               # The audits cargo-vet imports, locked
 ├── tests/                                                         # Integration tests
 │   └── it/                                                        # It
 │       ├── catalog_entries/                                       # The model catalog: the shape of an entry, and what an entry is estimated

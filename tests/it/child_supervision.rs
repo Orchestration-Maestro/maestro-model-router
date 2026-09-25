@@ -289,7 +289,7 @@ fn stopping_a_child_terminates_it_and_check_reports_the_exit() {
 /// is stopped. Elsewhere than the Unix platforms a resident set may
 /// legitimately be unknown, so only its absence is asserted everywhere.
 #[test]
-fn a_childs_pid_is_the_process_the_machine_measures_until_it_stops() {
+fn a_child_pid_is_the_process_the_machine_measures_until_it_stops() {
     let root = ModelsRoot::with(&[MODEL]);
     let mut child = server()
         .start(&entry("gemma3"), root.path())
