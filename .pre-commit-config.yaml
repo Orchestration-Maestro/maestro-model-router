@@ -36,14 +36,15 @@ repos:
         name: YAML formatting
         language: mise
         additional_dependencies: ["aqua:google/yamlfmt@0.21.0"]
-        entry: yamlfmt -no_global_conf -lint
+        entry: yamlfmt -no_global_conf -lint -formatter indent=2,include_document_start=false,retain_line_breaks_single=true,pad_line_comments=2,line_ending=lf
         types: [yaml]
       - id: taplo
         name: TOML formatting
         language: mise
         additional_dependencies: ["aqua:tamasfe/taplo@0.10.0"]
-        entry: taplo fmt --check --diff
+        entry: taplo fmt --check --diff --no-auto-config --option array_auto_collapse=false
         types: [toml]
+        exclude: '(^|/)supply-chain/'
       - id: actionlint
         name: GitHub workflow lint
         language: mise
@@ -72,8 +73,9 @@ repos:
         name: Markdown structure
         language: mise
         additional_dependencies: ["aqua:rvben/rumdl@0.2.77"]
-        entry: rumdl check --no-cache
+        entry: rumdl check --no-cache --no-config --disable MD013,MD041 --config 'MD033.allowed-elements = ["a", "br", "details", "h1", "img", "p", "picture", "source", "strong", "summary"]'
         types: [markdown]
+        exclude: '^CHANGELOG\.md$'
       - id: lychee
         name: Markdown links, offline
         language: mise
@@ -99,23 +101,26 @@ repos:
       - id: rustfmt
         name: Rust formatting
         language: system
-        entry: cargo fmt --all --check
+        entry: cargo fmt --all --check -- --config style_edition=2024
         types: [rust]
         pass_filenames: false
       - id: clippy
         name: Clippy with the organization's lints
-        language: system
-        entry: cargo clippy --workspace --all-targets --locked -- -D warnings
+        entry: rust-gate clippy --local
         types: [rust]
-        pass_filenames: false
         stages: [pre-push]
+        language: rust
+        additional_dependencies:
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.0:rust-gate"
+          - "cli:jaq:3.1.1"
+        pass_filenames: false
       - id: rust-gate-architecture
         name: Source rules
         entry: rust-gate architecture --local
         files: '(\.rs|Cargo\.toml|Cargo\.lock|maestro-quality\.toml|clippy\.toml)$'
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v2.5.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-hygiene
@@ -124,7 +129,7 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v2.5.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-rules
@@ -133,7 +138,7 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v2.5.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-guide
@@ -142,6 +147,6 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v2.5.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false

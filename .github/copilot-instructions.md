@@ -33,8 +33,6 @@ in place.
 .                                                                  # Repository root
 ├── .cargo/                                                        # Cargo settings for this workspace
 │   └── mutants.toml                                               # What cargo mutants leaves out when rust-workflows mutates a change
-├── .config/                                                       # Tool settings that live in a directory
-│   └── nextest.toml                                               # TOML settings: nextest; rendered by rust-gate sync
 ├── .github/                                                       # GitHub metadata, templates and workflows
 │   ├── assets/                                                    # Images and other assets
 │   │   ├── CREDITS.md                                             # Banner credits
@@ -245,9 +243,6 @@ in place.
 ├── .gitattributes                                                 # Repository-wide file handling
 ├── .gitignore                                                     # Build output, caches and machine-local state
 ├── .pre-commit-config.yaml                                        # Hook configuration, run by prek (https://github.com/j178/prek) -- the Rust implementation of the pre-commit protocol
-├── .rumdl.toml                                                    # rumdl: the Markdown structure every repository holds to; rendered by rust-gate sync
-├── .taplo.toml                                                    # taplo: the TOML formatter just check and the commit hook run over every TOML file in the repository; rendered by rust-gate sync
-├── .yamlfmt.yml                                                   # How yamlfmt formats every YAML file; rendered by rust-gate sync
 ├── AGENTS.md                                                      # Rules for coding agents: what to read, what never to weaken, how to verify
 ├── CHANGELOG.md                                                   # All notable changes are recorded here
 ├── CONTEXT.md                                                     # The words this repository uses, and the ones it avoids
@@ -256,14 +251,11 @@ in place.
 ├── LICENSE                                                        # The licence this repository is distributed under
 ├── README.md                                                      # maestro-model-router is Orchestration-Maestro's model router, and its command is model-router
 ├── catalog.toml                                                   # The models this router serves
-├── clippy.toml                                                    # Governance's pylint bar: max-args 5
-├── deny.toml                                                      # cargo-deny supersedes cargo-audit: advisories plus licences, bans and sources
 ├── justfile                                                       # Optional convenience task runner (https://just.systems)
 ├── maestro-quality.toml                                           # The organization's quality rules as this repository shapes them: the inputs its CI caller passes
 ├── mise.lock                                                      # The checksum of every pinned tool download
 ├── mise.toml                                                      # The development toolbelt: every tool just check needs, at the version CI pins
 ├── rust-toolchain.toml                                            # The pinned Rust toolchain
-├── rustfmt.toml                                                   # TOML settings: rustfmt; rendered by rust-gate sync
 └── typos.toml                                                     # The words this repository means, from [typos] words in maestro-quality.toml; rendered by rust-gate sync
 ```
 
