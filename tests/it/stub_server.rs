@@ -187,9 +187,18 @@ fn on_a_free_port(arguments: &[&str]) -> (Running, u16) {
 }
 
 /// How the stub started with `arguments` on a free port exited.
+///
+/// Waited for with a deadline, so a stub that never exits fails the test
+/// rather than holding the whole run until something outside it gives up.
 fn exit_status(arguments: &[&str]) -> ExitStatus {
     let (mut running, _) = on_a_free_port(arguments);
-    running.0.wait().expect("the stub exits on its own")
+    polled(Duration::from_secs(10), Duration::from_millis(25), || {
+        running
+            .0
+            .try_wait()
+            .expect("the stub can be asked whether it exited")
+    })
+    .expect("the stub exits on its own within ten seconds")
 }
 
 #[test]
@@ -416,6 +425,27 @@ fn echo_reflects_the_request_line_and_every_header() {
 }
 
 #[test]
+fn echo_reflects_the_body_it_was_sent() {
+    let (_running, port, _) = serving(&[]);
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a read timeout");
+    stream
+        .write_all(b"POST /v1/echo HTTP/1.1\r\nContent-Length: 12\r\n\r\nthe payload!")
+        .expect("write");
+    stream.shutdown(Shutdown::Write).expect("shutdown");
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).expect("read");
+
+    assert!(
+        reply.ends_with("body: the payload!"),
+        "the body comes back as it was sent:\n{reply}"
+    );
+}
+
+#[test]
 fn echo_reports_the_alias_the_stub_was_started_as() {
     let (_running, port, _) = serving(&["--alias", "gemma3"]);
 
@@ -435,5 +465,46 @@ fn echo_reports_the_alias_the_stub_was_started_as() {
     assert!(
         reply.contains("alias: gemma3"),
         "the echo says which entry this child is:\n{reply}"
+    );
+}
+
+/// The stub's `HEAD_LIMIT`: the largest request head it reads.
+const HEAD_LIMIT: usize = 64 * 1024;
+
+/// The status line the stub answers a `/v1/echo` whose head, blank line
+/// included, is `size` bytes long; `None` when it closed without one.
+fn echo_status_for_a_head_of(port: u16, size: usize) -> Option<String> {
+    let request_line = "GET /v1/echo HTTP/1.1\r\n";
+    let padding = "a".repeat(size - request_line.len() - "X-Pad: \r\n\r\n".len());
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a read timeout");
+    // A refused head may close the connection before the write is done, so
+    // every step after the connect answers `None` rather than failing.
+    stream
+        .write_all(format!("{request_line}X-Pad: {padding}\r\n\r\n").as_bytes())
+        .ok()?;
+    stream.shutdown(Shutdown::Write).ok()?;
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).ok()?;
+    reply.lines().next().map(str::to_owned)
+}
+
+#[test]
+fn a_request_head_is_read_up_to_its_limit_and_refused_past_it() {
+    let (_running, port, _) = serving(&[]);
+
+    assert_eq!(
+        echo_status_for_a_head_of(port, HEAD_LIMIT).as_deref(),
+        Some("HTTP/1.1 200 OK"),
+        "a head of exactly the limit is still read"
+    );
+    // One header line carries the head from under the limit to past it, so
+    // no line ends exactly on the limit.
+    assert_eq!(
+        echo_status_for_a_head_of(port, HEAD_LIMIT + 100),
+        None,
+        "a head past the limit is refused rather than buffered"
     );
 }

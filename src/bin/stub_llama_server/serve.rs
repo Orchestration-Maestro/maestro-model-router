@@ -86,3 +86,97 @@ fn serve(listener: &TcpListener, options: &Options) -> ExitCode {
     }
     ExitCode::SUCCESS
 }
+
+#[cfg(test)]
+mod tests {
+    use std::env::temp_dir;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::process;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use super::*;
+    use crate::options;
+
+    fn parsed(arguments: &[&str]) -> Options {
+        options::parse(arguments.iter().map(|argument| (*argument).to_owned())).expect("parses")
+    }
+
+    /// Runs the stub against a marker named for `test`, as asked to exit with
+    /// code 7 the moment it is serving, so a run that got past the marker ends
+    /// rather than serving forever.
+    fn run_with_marker(test: &str, present: bool) -> (ExitCode, bool) {
+        let marker = temp_dir().join(format!("stub-never-bind-{test}-{}", process::id()));
+        drop(fs::remove_file(&marker));
+        if present {
+            fs::write(&marker, b"").expect("the marker, written");
+        }
+        let options = parsed(&[
+            "--never-bind-marker",
+            &marker.display().to_string(),
+            "--exit-after",
+            "0",
+            "--exit-code",
+            "7",
+        ]);
+        // On a thread with a deadline, so a run that serves on rather than
+        // exiting fails this test instead of holding the whole test binary.
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || sender.send(run(options)).ok());
+        let code = receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the run ends within five seconds");
+        let left = marker.exists();
+        drop(fs::remove_file(&marker));
+        (code, left)
+    }
+
+    #[test]
+    fn a_first_run_without_its_marker_exits_before_binding_and_leaves_the_marker() {
+        let (code, left) = run_with_marker("absent", false);
+
+        assert_eq!(code, ExitCode::FAILURE, "the first run never serves");
+        assert!(left, "and leaves the marker for the run after it");
+    }
+
+    #[test]
+    fn a_run_that_finds_its_marker_serves_as_asked() {
+        let (code, _) = run_with_marker("present", true);
+
+        assert_eq!(
+            code,
+            ExitCode::from(7),
+            "it got as far as the asked-for exit"
+        );
+    }
+
+    /// The status `GET /health` answers from a stub serving with `arguments`.
+    fn health_from(arguments: &[&str]) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let port = listener.local_addr().expect("its address").port();
+        let options = parsed(arguments);
+        thread::spawn(move || serve(&listener, &options));
+
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a read timeout, so a hang fails rather than blocks");
+        stream
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .expect("write");
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).expect("read");
+        reply.lines().next().unwrap_or_default().to_owned()
+    }
+
+    #[test]
+    fn health_is_ready_once_ready_after_has_passed_and_loading_before() {
+        assert_eq!(health_from(&[]), "HTTP/1.1 200 OK", "no wait asked for");
+        assert_eq!(
+            health_from(&["--ready-after", "60000"]),
+            "HTTP/1.1 503 Service Unavailable",
+            "a minute's load not yet over"
+        );
+    }
+}
