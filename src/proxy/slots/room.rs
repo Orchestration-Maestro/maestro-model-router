@@ -130,12 +130,10 @@ impl Slots {
         // that has actually happened: a child that has exited frees its pages
         // whether or not the ledger has caught up.
         let device_free_mib = self.budget.probe().device().map(|device| device.free_mib());
-        let decision = self.budget.admit_with_guests(
-            &self.held(catalog),
-            &self.guests(catalog),
-            &Wanted::of(entry),
-            device_free_mib,
-        );
+        let (loaded, guests) = self.held_and_guests(catalog);
+        let decision =
+            self.budget
+                .admit_with_guests(&loaded, &guests, &Wanted::of(entry), device_free_mib);
         // Before the decision is acted on at all, joining the line included.
         if let Some(refusal) = asked.refusal(&decision) {
             return Err(refusal);

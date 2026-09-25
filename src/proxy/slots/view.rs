@@ -82,12 +82,26 @@ impl Slots {
         })
     }
 
-    /// Which loaded entries are guests, loaded into free room, in catalog
-    /// order: the ones admission unloads before any other.
-    pub(super) fn guests(&self, catalog: &Catalog) -> Vec<String> {
-        self.snapshot(catalog, |entry, held| held.guest.then(|| entry.id.clone()))
+    /// What [`Slots::held`] says, and which of it are guests -- loaded into
+    /// free room, the ones admission unloads before any other -- from one
+    /// look at each slot.
+    ///
+    /// One pass rather than two, because the slots do not stand still between
+    /// them: an unload on request, the reaper, or a request that finds its
+    /// child dead empties a slot without the admission lock. A guest emptied
+    /// between a walk for what is held and a walk for the guests would be held
+    /// but no guest, ranked as an ordinary model, and a colder chat model could
+    /// go first for room the guest had already given back.
+    pub(super) fn held_and_guests(&self, catalog: &Catalog) -> (Vec<Held>, Vec<String>) {
+        let (held, guests): (Vec<Held>, Vec<Option<String>>) = self
+            .snapshot(catalog, |entry, held| {
+                (
+                    Held::of(entry, busy(&held.child), held.last_used, &held.measured),
+                    held.guest.then(|| entry.id.clone()),
+                )
+            })
             .into_iter()
-            .flatten()
-            .collect()
+            .unzip();
+        (held, guests.into_iter().flatten().collect())
     }
 }
