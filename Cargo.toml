@@ -16,6 +16,8 @@ rust-version = "1.98.1"
 license = "MIT"
 description = "Router that supervises llama.cpp server processes and serves one endpoint per model"
 repository = "https://github.com/Orchestration-Maestro/maestro-model-router"
+keywords = ["llama-cpp", "llm", "router", "proxy", "openai"]
+categories = ["command-line-utilities", "web-programming::http-server"]
 # The second binary made `cargo run` ambiguous. This names the shipped one, so
 # the commands in README.md work as written.
 default-run = "model-router"
