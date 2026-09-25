@@ -80,8 +80,8 @@ const ACCEPTED: &[(&str, &str)] = &[
     (
         "a_resident_older_than_the_window_is_not_named_beside_an_on_demand_one \
          <-> a_busy_entry_older_than_the_window_is_not_named_beside_an_idle_one",
-        "The same shape as admission.rs's own accepted pair below, for the same \
-         reason and the same policy read through idle.rs instead: both call \
+        "The same shape as admission/decision.rs's own accepted pair below, for \
+         the same reason and the same policy read through idle.rs instead: both call \
          with_one_protected and assert the identical result, because the two \
          rules -- residency and busyness -- differ only in which field \
          protects an entry. Merging them would stop naming the two reasons a \

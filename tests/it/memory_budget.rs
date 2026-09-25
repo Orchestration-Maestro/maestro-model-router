@@ -1,6 +1,6 @@
 //! The memory budget, read from its variable.
 //!
-//! Its own target rather than a case inside the eviction tests: this is the
+//! Its own module rather than a case inside the eviction tests: this is the
 //! rule for one variable, and the eviction tests state their budget directly
 //! with `Budget::new`.
 //!

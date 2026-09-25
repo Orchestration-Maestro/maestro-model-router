@@ -1,9 +1,9 @@
 //! What the router unloads to make room, and what it refuses to touch.
 //!
-//! Its own target, because a reader who sees this fail should think about the
-//! policy rather than about routing. `admission.rs` proves the decision from
-//! four values without a process; this proves the router acts on it, which is
-//! the half that involves killing something.
+//! Its own module, because a reader who sees this fail should think about the
+//! policy rather than about routing. `admission/decision.rs` proves the
+//! decision from four values without a process; this proves the router acts
+//! on it, which is the half that involves killing something.
 //!
 //! Every case states its budget directly and its estimates in the catalog
 //! text. Nothing here measures memory and nothing here reads the environment:

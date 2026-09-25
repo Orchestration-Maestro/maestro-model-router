@@ -2,11 +2,12 @@
 //! it.
 //!
 //! Every reply here is authored by the router rather than relayed from a
-//! child: a refusal, a listing, a preflight. `proxy_routing.rs` proves that requests
-//! reach the right child; this proves that what the router answers itself is
-//! something a client library can act on without reading prose -- a status
-//! that means what the specification says, a JSON envelope with a stable
-//! code, and a `Retry-After` exactly when retrying can change the answer.
+//! child: a refusal, a listing, a preflight. `proxy_routing` proves that
+//! requests reach the right child; this proves that what the router answers
+//! itself is something a client library can act on without reading prose -- a
+//! status that means what the specification says, a JSON envelope with a
+//! stable code, and a `Retry-After` exactly when retrying can change the
+//! answer.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};

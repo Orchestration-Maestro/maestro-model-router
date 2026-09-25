@@ -1,8 +1,8 @@
 //! Where catalog locations resolve against.
 //!
-//! Its own target rather than a case inside the supervision tests: this stays
+//! Its own module rather than a case inside the supervision tests: this stays
 //! red until the launch command exists, while supervision turns green before
-//! it, and one target that is half green tells a reader nothing.
+//! it, and one module that is half green tells a reader nothing.
 //!
 //! The rule is read through `models_root_from`, which takes the variable's
 //! value and the home directory as arguments. Changing the process

@@ -1,6 +1,6 @@
 //! The idle window, read from its variable.
 //!
-//! Its own target, for the same reason `memory_budget.rs` has one: it is the
+//! Its own module, for the same reason `memory_budget.rs` has one: it is the
 //! rule for one variable, and a reader looking for it should find it by name.
 //!
 //! The rule is read through `IdleWindow::from_variable`, which takes the
