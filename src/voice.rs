@@ -95,4 +95,11 @@ mod tests {
             ]
         );
     }
+
+    // Closures have no `Debug`, so the limits a voice travels in would print
+    // nothing where it sits; it prints its name instead.
+    #[test]
+    fn a_voice_is_debugged_by_its_name() {
+        assert_eq!(format!("{:?}", Voice::default()), "Voice");
+    }
 }
