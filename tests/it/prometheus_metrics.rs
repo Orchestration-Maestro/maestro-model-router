@@ -5,6 +5,8 @@
 //! a graph can show what was loaded when the machine ran short -- which is
 //! the question the journal answered only for whoever read it at the time.
 
+use std::net::SocketAddr;
+
 use crate::support::{
     MODEL, ModelsRoot, budgeted, catalog_text, get, post, request, serving, status,
 };
@@ -15,7 +17,7 @@ fn two_entries() -> String {
 }
 
 /// The body of a scrape, having checked it is one.
-fn scrape(address: std::net::SocketAddr) -> String {
+fn scrape(address: SocketAddr) -> String {
     let reply = request(address, &get("/metrics"));
     assert_eq!(status(&reply), Some(200), "got:\n{reply}");
     assert!(

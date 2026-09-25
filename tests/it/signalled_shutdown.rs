@@ -14,22 +14,19 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crate::support::poll::eventually;
 use crate::support::spawned::{RouterProcess, SearchPath};
 use crate::support::{MODEL, ModelsRoot, catalog_text, get, health, request, status};
 
 /// Polls until the child's port stops answering, or fails saying it did not.
 fn assert_goes_quiet(endpoint: &str) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if health(endpoint).is_none() {
-            return;
-        }
-        sleep(Duration::from_millis(50));
-    }
-    panic!(
+    let quiet = eventually(Duration::from_secs(10), Duration::from_millis(50), || {
+        health(endpoint).is_none()
+    });
+    assert!(
+        quiet,
         "the child at {endpoint} outlived the router that was signalled to \
          stop. This is the process a service manager's stop leaves behind, \
          holding its memory."

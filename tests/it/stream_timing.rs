@@ -1,6 +1,6 @@
 //! The three properties of the relay that are about time rather than content.
 //!
-//! Separate from `proxy_routing.rs` on purpose. Every other test in this repository
+//! Separate from `proxy_routing` on purpose. Every other test in this repository
 //! asserts what a reply says, and a reply says the same thing whether or not
 //! it was buffered on the way. These three are the only gate on the property
 //! the slice exists to preserve, so a reader who sees this module fail should
@@ -14,9 +14,9 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crate::support::poll::eventually;
 use crate::support::{
     MODEL, ModelsRoot, Serving, arrivals, catalog_text, get, post, request, serving, status,
 };
@@ -204,12 +204,7 @@ fn a_caller_that_hangs_up_closes_the_upstream_connection() {
 /// one gap away, but a loaded machine can take longer and a fixed sleep would
 /// be either flaky or slow.
 fn appears(marker: &Path) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if marker.exists() {
-            return true;
-        }
-        sleep(Duration::from_millis(50));
-    }
-    false
+    eventually(Duration::from_secs(20), Duration::from_millis(50), || {
+        marker.exists()
+    })
 }

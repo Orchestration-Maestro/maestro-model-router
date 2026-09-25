@@ -13,12 +13,15 @@
 //! a catalog uses to ask for anything else.
 
 use std::collections::BTreeMap;
-use std::thread::sleep;
+use std::env::temp_dir;
+use std::fs::remove_file;
+use std::process;
 use std::time::{Duration, Instant};
 
 use maestro_model_router::catalog::{Entry, RelativePath, Residency};
 use maestro_model_router::launch::{Failure, Liveness, Server};
 
+use crate::support::poll::eventually;
 use crate::support::{ModelsRoot, health, stub_binary};
 
 /// The one model file every entry below points at.
@@ -183,11 +186,8 @@ fn a_child_that_exits_while_loading_reports_what_it_said_last() {
 fn a_child_that_loses_the_port_race_once_still_starts_on_the_retry() {
     let root = ModelsRoot::with(&[MODEL]);
     let mut entry = entry("racer");
-    let marker = std::env::temp_dir().join(format!(
-        "model-router-never-bind-marker-{}",
-        std::process::id()
-    ));
-    drop(std::fs::remove_file(&marker));
+    let marker = temp_dir().join(format!("model-router-never-bind-marker-{}", process::id()));
+    drop(remove_file(&marker));
     entry
         .flags
         .insert("never-bind-marker".to_owned(), marker.display().to_string());
@@ -203,7 +203,7 @@ fn a_child_that_loses_the_port_race_once_still_starts_on_the_retry() {
          lost the race"
     );
     child.stop();
-    drop(std::fs::remove_file(&marker));
+    drop(remove_file(&marker));
 }
 
 /// The retry is bounded at one: a child that loses the race on both its
@@ -296,13 +296,12 @@ fn a_dropped_child_does_not_outlive_the_router() {
         address
     };
 
-    for _ in 0..200 {
-        if health(address).is_none() {
-            return;
-        }
-        sleep(Duration::from_millis(25));
-    }
-    panic!("a dropped child kept serving on {address}");
+    assert!(
+        eventually(Duration::from_secs(5), Duration::from_millis(25), || {
+            health(address).is_none()
+        }),
+        "a dropped child kept serving on {address}"
+    );
 }
 
 /// Slice 1 validated the shape of a location and deferred its existence to

@@ -21,10 +21,10 @@ const RANGES: &[(u32, u32)] = &[
 
 const SCANNED: &[&str] = &["rs", "md", "toml", "json", "yaml", "yml", "ts"];
 
-fn is_accented(c: char) -> bool {
+fn is_accented(letter: char) -> bool {
     RANGES
         .iter()
-        .any(|(lo, hi)| (*lo..=*hi).contains(&(c as u32)))
+        .any(|(lo, hi)| (*lo..=*hi).contains(&(letter as u32)))
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn all_prose_is_english() {
     let root = repo_root();
     let files: Vec<_> = sources()
         .into_iter()
-        .filter(|p| has_extension(p, SCANNED))
+        .filter(|path| has_extension(path, SCANNED))
         .collect();
     assert!(!files.is_empty(), "nothing was scanned");
 

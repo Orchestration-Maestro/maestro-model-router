@@ -12,11 +12,14 @@
 //! between a router that queues and one that makes every caller write a retry
 //! loop.
 
+use std::fs;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{MODEL, ModelsRoot, post, queued, request, settled, status};
+use crate::support::{MODEL, ModelsRoot, Serving, post, queued, request, settled, status};
 
 /// A second model file, so there is something to want the room for.
 const SECOND_MODEL: &str = "cache/qwen/qwen3-8b.gguf";
@@ -204,9 +207,9 @@ struct Reply {
 
 /// Asks `id` for a stream on a thread of its own, and sends back the reply
 /// with when it began.
-fn asked(address: SocketAddr, id: &'static str, replies: &std::sync::mpsc::Sender<Reply>) {
+fn asked(address: SocketAddr, id: &'static str, replies: &Sender<Reply>) {
     let replies = replies.clone();
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         let mut stream = TcpStream::connect(address).expect("the router is listening");
         stream
             .set_read_timeout(Some(Duration::from_secs(60)))
@@ -225,7 +228,7 @@ fn asked(address: SocketAddr, id: &'static str, replies: &std::sync::mpsc::Sende
 
 /// The next `count` replies, each checked to be a success, by the request
 /// they answered, in the order the router began serving them.
-fn served_in_order(answered: &std::sync::mpsc::Receiver<Reply>, count: usize) -> Vec<&'static str> {
+fn served_in_order(answered: &Receiver<Reply>, count: usize) -> Vec<&'static str> {
     let mut replies: Vec<Reply> = (0..count)
         .map(|_| {
             answered
@@ -247,7 +250,7 @@ fn served_in_order(answered: &std::sync::mpsc::Receiver<Reply>, count: usize) ->
 }
 
 /// A router over `contended`, with gemma3 streaming and so holding its room.
-fn contended_and_streaming() -> (crate::support::Serving, TcpStream) {
+fn contended_and_streaming() -> (Serving, TcpStream) {
     let serving = queued(
         &contended(),
         ModelsRoot::with(&[MODEL, SECOND_MODEL]),
@@ -259,7 +262,7 @@ fn contended_and_streaming() -> (crate::support::Serving, TcpStream) {
 }
 
 /// Waits until this many requests are in line for room.
-fn in_line(serving: &crate::support::Serving, count: usize) {
+fn in_line(serving: &Serving, count: usize) {
     settled(serving, &format!("{count} requests in line"), |serving| {
         serving.waiting() == count
     });
@@ -271,7 +274,7 @@ fn a_model_that_fits_is_answered_while_another_request_waits_for_room() {
     // model with room to spare queued behind a request waiting for somebody
     // else's -- for as long as that request waited.
     let (serving, streaming) = contended_and_streaming();
-    let (replies, answered) = std::sync::mpsc::channel();
+    let (replies, answered) = mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
     in_line(&serving, 1);
     asked(serving.address(), "tiny", &replies);
@@ -288,7 +291,7 @@ fn a_model_that_fits_is_answered_while_another_request_waits_for_room() {
 #[test]
 fn requests_waiting_for_room_are_answered_in_the_order_they_asked() {
     let (serving, streaming) = contended_and_streaming();
-    let (replies, answered) = std::sync::mpsc::channel();
+    let (replies, answered) = mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
     in_line(&serving, 1);
     asked(serving.address(), "third", &replies);
@@ -315,7 +318,7 @@ fn a_request_that_could_take_room_now_waits_its_turn_behind_an_earlier_one() {
         &post("/models/tiny/v1/echo", "{\"say\":\"hello\"}"),
     );
     assert_eq!(status(&warm), Some(200), "{warm}");
-    let (replies, answered) = std::sync::mpsc::channel();
+    let (replies, answered) = mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
     in_line(&serving, 1);
     asked(serving.address(), "small", &replies);
@@ -339,11 +342,11 @@ fn a_request_waiting_when_the_catalog_is_reloaded_is_told_to_ask_again() {
     // again -- which a retry does under the catalog now serving.
     let root = ModelsRoot::with(&[MODEL, SECOND_MODEL]);
     // Where every router `support` builds reads its catalog when reloaded.
-    std::fs::write(root.path().join("catalog.toml"), contended())
+    fs::write(root.path().join("catalog.toml"), contended())
         .expect("a writable temporary directory");
     let serving = queued(&contended(), root, Some(4096), Duration::from_secs(30));
     let streaming = start_stream(serving.address(), "/v1/chat/completions", STREAM);
-    let (replies, answered) = std::sync::mpsc::channel();
+    let (replies, answered) = mpsc::channel();
     asked(serving.address(), "qwen38", &replies);
     in_line(&serving, 1);
 
