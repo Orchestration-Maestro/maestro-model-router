@@ -44,7 +44,8 @@ in place.
 │   │   ├── ci.yml                                                 # CI: calls ci.yml, upload-coverage.yml, upload-sarif.yml
 │   │   ├── dependabot-auto-merge.yml                              # Dependabot auto-merge
 │   │   ├── eviction-sweep.yml                                     # Eviction sweep
-│   │   └── scorecard.yml                                          # OpenSSF Scorecard
+│   │   ├── scorecard.yml                                          # OpenSSF Scorecard
+│   │   └── tool-updates.yml                                       # Tool updates
 │   ├── CODEOWNERS                                                 # Who reviews each path
 │   ├── copilot-instructions.md                                    # This guide, written by rust-gate guide at every commit
 │   └── dependabot.yml                                             # The organization merges only conventional titles: "ci(deps): bump ..."
