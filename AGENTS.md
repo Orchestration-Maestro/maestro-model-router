@@ -111,10 +111,11 @@ is worse than no gate, because the repository still looks guarded.
 ## The shape of a change
 
 `main` takes changes only through a pull request. Direct pushes are refused by
-the platform, for the maintainer too.
+the platform, for the maintainer too. Install rustup and `rust-gate` first, as
+[`README.md`](README.md) shows under its local commands.
 
 ```text
-scripts/bootstrap.sh  # once per clone: the pinned toolbelt and the hooks
+rust-gate setup       # once per clone: the pinned toolbelt and the hooks
 git switch -c <topic>
 just check            # the same commands CI runs, not equivalents
 git push -u origin <topic>

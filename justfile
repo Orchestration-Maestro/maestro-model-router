@@ -6,14 +6,17 @@
 # real one once already. Recipes resolve tools from our own install first, so
 # an inherited PATH cannot decide which binary a gate runs.
 #
-# The pinned toolbelt goes first of all: `setup` links every tool mise.toml
-# pins into the ignored .tools/bin, so a gate runs the release mise.lock
-# verified rather than whichever copy an earlier install left in ~/.cargo/bin.
+# The pinned toolbelt goes first of all: `rust-gate setup` links every tool
+# rust-workflows pins into one per-user directory, so a gate runs the release
+# the gate verified rather than whichever copy an earlier install left in
+# ~/.cargo/bin.
 #
 # Derived, never hardcoded: `home_directory()` resolves on Windows, macOS and
 # Linux alike, and the separator follows the OS rather than assuming Unix.
 path_sep := if os_family() == "windows" { ";" } else { ":" }
-tools_bin := justfile_directory() / ".tools" / "bin"
+unix_cache := env("XDG_CACHE_HOME", home_directory() / ".cache")
+cache_home := if os_family() == "windows" { env("LOCALAPPDATA") } else { unix_cache }
+tools_bin := cache_home / "maestro" / "tools" / "bin"
 cargo_bin := home_directory() / ".cargo" / "bin"
 local_bin := home_directory() / ".local" / "bin"
 export PATH := tools_bin + path_sep + cargo_bin + path_sep + local_bin + path_sep + env('PATH')
@@ -28,10 +31,8 @@ export PATH := tools_bin + path_sep + cargo_bin + path_sep + local_bin + path_se
 # `reload`, `serving` and `deploy` are the recipes in this file that are not
 # cross-platform: they act on a running router, and all but `reload` on its
 # service, which on this machine is a systemd user unit. Every gate above them
-# runs anywhere its tools are on the PATH; `setup` provisions those tools on
-# Linux x64, the platform mise.lock records them for. `update-tools` and
-# `_commit-as-bot`, last in the file, belong to the tool-updates workflow and
-# run on its Linux runner.
+# runs anywhere its tools are on the PATH; `rust-gate setup` provisions those
+# tools on Linux, macOS and Windows.
 unit := "model-router"
 
 # First in the file, deliberately: `just` with no arguments runs the first
@@ -46,75 +47,52 @@ unit := "model-router"
 help:
     @just --list --unsorted
 
-# Rust alone. The gate tools are the pinned toolbelt, which `setup` installs:
-# a tool fetched here at whatever version was newest is the unpinned input
-# mise.lock exists to remove.
+# Rust alone. The gate tools are the pinned toolbelt, which `rust-gate setup`
+# installs: a tool fetched here at whatever version was newest is the unpinned
+# input the gate's pins exist to remove.
 
 # Install the Rust toolchain this repository needs. Idempotent.
 install:
     rustup toolchain install --profile minimal 1.98.1
     rustup component add clippy rustfmt llvm-tools-preview
 
-# mise installs every tool mise.toml pins and refuses bytes that differ from
-# mise.lock; scripts/bootstrap.sh verified mise itself, and runs this once.
-# The links in .tools/bin are what put the toolbelt on this file's PATH. The
-# hooks' two types come from default_install_hook_types.
-
-# Install the pinned toolbelt into ignored .tools/bin and wire the local hooks.
-setup:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || {
-      echo 'Pinned tooling supports Linux x64 only' >&2; exit 1;
-    }
-    mise trust mise.toml
-    mise install --locked
-    mkdir -p .tools/bin
-    find .tools/bin -mindepth 1 ! -name mise -delete
-    while IFS= read -r directory; do
-      for file in "$directory"/*; do
-        if [[ -f "$file" && -x "$file" ]]; then
-          ln -s -- "$file" ".tools/bin/$(basename -- "$file")"
-        fi
-      done
-    done < <(mise bin-paths)
-    prek install --install-hooks
-
-# The quality commands rust-workflows' CI runs, with its flags: Clippy with the
-# scaffolding and `unsafe` denied, strict rustdoc, the 90% coverage floor; then
-# the workflows, the formatting of every other file, the spelling, a secret
-# scan of every file a commit could take, and the commit hooks. CI also runs
-# what needs its own runners or the network: the other platforms, the release
-# build, the SBOMs and mutation testing.
+# The quality commands rust-workflows' CI runs, with its flags: rustfmt and
+# Clippy with the organization's settings, the gate handing Clippy its
+# thresholds and the lint block denying the scaffolding and `unsafe`, strict
+# rustdoc, the 90% coverage floor; then the workflows, the formatting of every
+# other file, the spelling, a secret scan of every file a commit could take,
+# and the commit hooks. CI also runs what needs its own runners or the network:
+# the other platforms, the release build, the SBOMs and mutation testing.
 #
 # A missing tool stops it before anything runs, because a gate that skips when
-# its tool is absent reports green while looking at nothing.
+# its tool is absent reports green while looking at nothing. Once rust-workflows
+# ships `rust-gate ci --local`, that one command replaces this recipe's body;
+# until then CI's dependency-policy step alone checks licences, bans and
+# sources, against the organization's policy the gate renders at run time.
 
 # Run the quality gates CI runs.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
     for tool in mise just actionlint zizmor yamlfmt taplo shellcheck prek cargo rustup \
-      gitleaks typos jaq cargo-deny cargo-llvm-cov cargo-machete similarity-rs; do
+      gitleaks typos jaq cargo-llvm-cov cargo-machete similarity-rs rust-gate; do
       command -v "$tool" >/dev/null ||
-        { echo "Missing $tool; run scripts/bootstrap.sh" >&2; exit 1; }
+        { echo "Missing $tool; run rust-gate setup" >&2; exit 1; }
     done
     just --unstable --fmt --check
-    cargo fmt --all --check
-    cargo clippy --workspace --all-targets --locked -- \
-        -D warnings -D clippy::todo -D clippy::dbg_macro -D unsafe_code
+    cargo fmt --all --check -- --config style_edition=2024
+    rust-gate clippy --local
     cargo test --workspace --all-targets --locked
     cargo test --workspace --doc --locked
     RUSTDOCFLAGS='-D warnings -D missing_docs' cargo doc --workspace --no-deps --locked
     cargo llvm-cov --workspace --locked --fail-under-lines 90 --summary-only
     cargo machete
-    cargo deny check
     actionlint
     zizmor --offline --persona=pedantic --no-progress .github/
     yamlfmt -no_global_conf -lint
     taplo fmt --check
     typos
-    # Secrets in every file a commit could take, target/ and .tools/ aside.
+    # Secrets in every file a commit could take, target/ aside.
     tree=$(mktemp -d)
     trap 'rm -rf "$tree"' EXIT
     while IFS= read -r -d '' file; do
@@ -125,7 +103,7 @@ check:
 
 # Format in place. `check` only verifies.
 fmt:
-    cargo fmt --all
+    cargo fmt --all -- --config style_edition=2024
 
 # CI mutates only a pull request's diff; this mutates the whole crate, and runs
 # for hours. `CARGO_TARGET_DIR` is cleared because the tests run the binaries
@@ -219,64 +197,3 @@ serving:
     else
         echo "loaded: nothing"
     fi
-
-# Move every tool mise.toml pins to its latest release, mise.lock with it (network).
-[linux]
-update-tools:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # mise.toml first, then mise.lock through mise, which records each new
-    # release's URL and checksum. One line per move; no output means all current.
-    declare -A was=()
-    version='^[0-9A-Za-z][0-9A-Za-z.+-]*$'
-    while read -r name current; do
-      [[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "unexpected tool name: ${name}" >&2; exit 1; }
-      latest="$(mise latest "$name")"
-      [[ "$latest" =~ $version ]] || { echo "${name}: no release version from mise" >&2; exit 1; }
-      [[ "$latest" != "$current" ]] || continue
-      sed -i -E "s/^(${name} = (\{ version = )?\")${current//./\\.}\"/\1${latest}\"/" mise.toml
-      grep -q "^${name} = .*\"${latest}\"" mise.toml || {
-        echo "${name}: cannot move its version in mise.toml" >&2; exit 1;
-      }
-      was[$name]="$current"
-      major=''
-      [[ "${current%%.*}" == "${latest%%.*}" ]] || major=' (major)'
-      echo "${name} ${current} -> ${latest}${major}"
-    done < <(jaq -r --from toml \
-      '.tools | to_entries[] | "\(.key) \(.value | if type == "object" then .version else . end)"' \
-      mise.toml)
-    if (( ${#was[@]} )); then
-      # Progress goes to stderr: stdout is the list of moves, a commit message.
-      mise lock --platform linux-x64,linux-x64-musl "${!was[@]}" >&2
-    fi
-
-# Commit every changed file of the checkout onto $BRANCH as the organization's
-# bot: through createCommitOnBranch, which GitHub signs, where a commit made on
-# the runner would be unsigned and the organization refuses it. The new commit's
-# parent is $HEAD, which must still be the branch's head. Reads GH_TOKEN,
-# GITHUB_REPOSITORY, BRANCH, HEAD, TITLE, BODY, a file, and PATHS, the pathspecs
-# a commit may take; unset, every changed file.
-_commit-as-bot:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    : "${GH_TOKEN:?}" "${GITHUB_REPOSITORY:?}" "${BRANCH:?}" "${HEAD:?}" "${TITLE:?}" "${BODY:?}"
-    read -r -a paths <<< "${PATHS:-}"
-    files="$(mktemp)"
-    while IFS= read -r path; do
-      jaq -n --arg path "$path" --arg contents "$(base64 -w0 "$path")" \
-        "{path: \$path, contents: \$contents}" >> "$files"
-    done < <(git diff --name-only -- "${paths[@]}")
-    if [[ ! -s "$files" ]]; then
-      echo "Nothing changed; nothing to commit."
-      exit 0
-    fi
-    mutation="mutation(\$input: CreateCommitOnBranchInput!) {"
-    mutation+=" createCommitOnBranch(input: \$input) { commit { oid } } }"
-    input="{branch: {repositoryNameWithOwner: \$repo, branchName: \$branch},"
-    input+=" expectedHeadOid: \$head, message: {headline: \$title, body: \$body},"
-    input+=" fileChanges: {additions: \$files}}"
-    jaq -n --arg query "$mutation" --arg repo "$GITHUB_REPOSITORY" --arg branch "$BRANCH" \
-      --arg head "$HEAD" --arg title "$TITLE" --rawfile body "$BODY" \
-      --slurpfile files "$files" "{query: \$query, variables: {input: ${input}}}" \
-      > "$files.json"
-    gh api graphql --input "$files.json" --jq '.data.createCommitOnBranch.commit.oid'

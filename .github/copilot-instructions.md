@@ -42,8 +42,7 @@ in place.
 │   │   ├── ci.yml                                                 # CI: calls ci.yml, upload-coverage.yml, upload-sarif.yml
 │   │   ├── dependabot-auto-merge.yml                              # Dependabot auto-merge
 │   │   ├── eviction-sweep.yml                                     # Eviction sweep
-│   │   ├── scorecard.yml                                          # OpenSSF Scorecard
-│   │   └── tool-updates.yml                                       # Tool updates
+│   │   └── scorecard.yml                                          # OpenSSF Scorecard
 │   ├── CODEOWNERS                                                 # Who reviews each path
 │   ├── copilot-instructions.md                                    # This guide, written by rust-gate guide at every commit
 │   └── dependabot.yml                                             # The organization merges only conventional titles: "ci(deps): bump ..."
@@ -68,8 +67,6 @@ in place.
 │       │   └── 2026-09-13-small-qwens-on-the-device.md            # The small Qwens go to the device, and the retrieval pair get a rate
 │       └── specs/                                                 # Specifications, one directory per slice
 │           └── 2026-09-03-model-router-design.md                  # Model router design
-├── scripts/                                                       # Maintenance scripts
-│   └── bootstrap.sh                                               # One command to get from a fresh clone to a machine that can run the gate
 ├── src/                                                           # The crate's sources
 │   ├── admission/                                                 # Deciding what may be loaded, and what must be unloaded first
 │   │   ├── budget.rs                                              # Where the budget comes from: the environment, the machine, or a test
@@ -253,8 +250,6 @@ in place.
 ├── catalog.toml                                                   # The models this router serves
 ├── justfile                                                       # Optional convenience task runner (https://just.systems)
 ├── maestro-quality.toml                                           # The organization's quality rules as this repository shapes them: the inputs its CI caller passes
-├── mise.lock                                                      # The checksum of every pinned tool download
-├── mise.toml                                                      # The development toolbelt: every tool just check needs, at the version CI pins
 ├── rust-toolchain.toml                                            # The pinned Rust toolchain
 └── typos.toml                                                     # The words this repository means, from [typos] words in maestro-quality.toml; rendered by rust-gate sync
 ```
@@ -267,7 +262,6 @@ in place.
 3. The commit hook `rust-gate guide` rewrites this guide when a file is added,
    moved or removed; commit it with the change. The organization's daily drift
    check reports a guide left stale.
-4. Run `scripts/bootstrap.sh` once, then `just check`, and report the commands
-   you actually ran.
+4. Run `just check`, and report the commands you actually ran.
 5. Commits are signed, with a conventional title; the default branch takes only
    squash-merged pull requests.

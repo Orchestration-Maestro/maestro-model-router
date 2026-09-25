@@ -301,7 +301,7 @@ fn detected() -> BTreeSet<String> {
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect(
-            "similarity-rs must be installed: scripts/bootstrap.sh pins it. \
+            "similarity-rs must be installed: rust-gate setup installs it. \
              A gate that skips when its tool is missing reports green while \
              looking at nothing.",
         );
