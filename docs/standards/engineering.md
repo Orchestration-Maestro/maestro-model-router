@@ -1,13 +1,13 @@
 # Engineering rules in `maestro-model-router`
 
 `maestro-model-router` follows the organization's [engineering
-rules](https://github.com/Orchestration-Maestro/.github/blob/main/golden-rules/engineering.md).
+rules](https://github.com/Orchestration-Maestro/.github/blob/864d85597a833864cd8506c3925830503b3c2163/golden-rules/engineering.md).
 This page is its rule map (C-001): for every rule, what holds it here, or why it
 does not apply. A row may name a stricter local rule; none weakens one.
 
-The organization's `scripts/golden-rules.py` writes the rows from the golden
-rules and keeps what each row says here. A rule added there arrives as "Not
-mapped yet", and the drift check fails until it is mapped.
+`rust-gate rules` writes the rows from the golden rules of `.github@864d855` at
+every commit and keeps what each row says here. A rule added there arrives as
+"Not mapped yet", and the daily drift check reports it until it is mapped.
 
 ## Rule map
 
@@ -49,7 +49,7 @@ mapped yet", and the drift check fails until it is mapped.
 | ENF-012 Pinned inputs | Gate: `Cargo.lock` with `--locked` and actions pinned by SHA; the tools `just install` fetches are not pinned yet |
 | ENF-013 No secret in history | Organization: secret scanning with push protection and validity checks (`maestrolabs-baseline`); CI: gitleaks |
 | ENF-014 Multi-factor authentication | Organization: two-factor authentication is required of every member and outside collaborator |
-| C-001 Map every rule | These pages, kept current by `scripts/golden-rules.py`; the drift check fails on a rule not mapped yet |
+| C-001 Map every rule | These pages, kept current by `rust-gate rules` at every commit; the daily drift check reports a row not mapped yet |
 | C-004 Detect drift | Organization: the daily drift check opens a `Drift:` issue for this repository |
 | C-005 Keep the evidence | GitHub: pull requests, CI runs with their reports, and drift issues |
 | C-006 Controlled exceptions | Review: an exception is recorded in the pull request that makes it, with its scope, rationale and expiry |

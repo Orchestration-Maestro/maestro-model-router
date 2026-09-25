@@ -1,22 +1,22 @@
 //! The format's primitives: fixed-width integers, strings, and stepping over
 //! what is not kept.
 //!
-//! Split from the module above it along the seam the size gate exposed: that
-//! module decides which values are worth keeping, and this reads one value's
-//! bytes without caring what it is for. Every function here takes the reader
+//! Split from the metadata reader beside it along the seam the size gate
+//! exposed: that module decides which values are worth keeping, and this
+//! reads one value's bytes without caring what it is for. Every function here takes the reader
 //! and hands back one value or steps past it; none of them knows a key name.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{self, BufReader, Read};
 
-use super::Fault;
+use super::fault::Fault;
 
 pub(super) type Reader = BufReader<File>;
 
 /// A read that ended inside a value, which is what every I/O failure past
 /// the open amounts to.
-impl From<std::io::Error> for Fault {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for Fault {
+    fn from(error: io::Error) -> Self {
         Self(format!("ends inside its metadata: {error}"))
     }
 }
@@ -54,10 +54,13 @@ pub(super) fn width(kind: u32) -> Result<u64, Fault> {
 /// `None` when it is a float, a flag, or negative.
 pub(super) fn scalar_at(reader: &mut Reader, kind: u32) -> Result<Option<u64>, Fault> {
     let mut bytes = [0u8; 8];
-    // Never more than eight, so the conversion cannot fail; written as one so
-    // no cast has to be vouched for.
+    // Never more than eight, so neither the conversion nor the slice can fail;
+    // written as lookups so no cast and no index has to be vouched for.
     let taken = usize::try_from(width(kind)?).unwrap_or(8);
-    reader.read_exact(&mut bytes[..taken])?;
+    let held = bytes
+        .get_mut(..taken)
+        .ok_or_else(|| Fault(format!("value type {kind} is wider than eight bytes")))?;
+    reader.read_exact(held)?;
     Ok(unsigned(kind, bytes))
 }
 
@@ -100,4 +103,53 @@ pub(super) fn skip(reader: &mut Reader, bytes: u64) -> Result<(), Fault> {
         i64::try_from(bytes).map_err(|_| Fault("claims an impossible length".to_owned()))?;
     reader.seek_relative(offset)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A value's little-endian bytes, padded to the eight a scalar is read into.
+    fn padded(bytes: &[u8]) -> [u8; 8] {
+        let mut out = [0u8; 8];
+        out.iter_mut()
+            .zip(bytes)
+            .for_each(|(slot, byte)| *slot = *byte);
+        out
+    }
+
+    #[test]
+    fn a_flag_reads_as_one_or_nothing() {
+        assert_eq!(unsigned(7, padded(&[1])), Some(1));
+        assert_eq!(unsigned(7, padded(&[0])), Some(0));
+    }
+
+    #[test]
+    fn a_signed_integer_reads_when_it_is_not_negative() {
+        for (kind, positive, negative) in [
+            (
+                1,
+                padded(&100i8.to_le_bytes()),
+                padded(&(-1i8).to_le_bytes()),
+            ),
+            (
+                3,
+                padded(&100i16.to_le_bytes()),
+                padded(&(-1i16).to_le_bytes()),
+            ),
+            (
+                5,
+                padded(&100i32.to_le_bytes()),
+                padded(&(-1i32).to_le_bytes()),
+            ),
+            (
+                11,
+                padded(&100i64.to_le_bytes()),
+                padded(&(-1i64).to_le_bytes()),
+            ),
+        ] {
+            assert_eq!(unsigned(kind, positive), Some(100), "type {kind}");
+            assert_eq!(unsigned(kind, negative), None, "type {kind} below zero");
+        }
+    }
 }

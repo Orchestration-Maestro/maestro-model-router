@@ -11,4 +11,28 @@ exclude_re = [
   # The arm stays for any platform that reports the error again, where
   # taking it for a pause would spin.
   'src/proxy/relay\.rs:\d+:\d+: replace match guard .* with true in watch$',
+  # `Served::drop` in src/serving.rs tells the waiting thread that serving
+  # ended. `Router::serve` never returns, so the only way it drops is a panic
+  # on the serving thread, and no test can make the real router panic there.
+  # An empty drop leaves a router whose serving thread panicked waiting for a
+  # signal instead of exiting with the panic's status.
+  'src/serving\.rs:\d+:\d+: replace <impl Drop for Served>::drop with \(\)$',
+  # A second signal in src/serving.rs ends the process while the first
+  # signal's stop is still running. That stop sends SIGKILL to each child
+  # and then waits for it, and on Linux it returns at once for any child a
+  # test can start. So a second signal lands inside the stop only if it wins
+  # a race, and a test that depended on that race would be flaky. Without the
+  # guard, the second signal starts another stop instead of ending the
+  # process.
+  'src/serving\.rs:\d+:\d+: replace match guard signalled with false in wait_for_the_end$',
+  # The stub reads a request body only when its declared length is above
+  # zero. `>=` also runs that read at zero, which reads nothing into an empty
+  # buffer, so its behaviour is the same and no test can tell them apart.
+  'src/bin/stub_llama_server/reply\.rs:\d+:\d+: replace > with >= in answer$',
+  # `output` in src/memory/command.rs polls a hung tool until a monotonic
+  # `Instant` deadline. `<` and `<=` differ only when `Instant::now()` equals
+  # the deadline to the nanosecond. At that instant `<=` sleeps one more
+  # poll and then kills the tool, so the caller still gets `None`. No test
+  # can make the clock hit that instant.
+  'src/memory/command\.rs:\d+:\d+: replace < with <= in output$',
 ]

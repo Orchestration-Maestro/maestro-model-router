@@ -7,11 +7,15 @@
 //! does not, so it needs a signal to stop it rather than an end it reaches on
 //! its own.
 
-use std::sync::{Condvar, Mutex, PoisonError, Weak};
+use std::sync::Weak;
 use std::time::{Duration, Instant};
 
-use super::Shared;
-use super::slots::say;
+use super::shared::Shared;
+
+/// Where the reaper's stop signal was defined before it moved beside the
+/// `Shared` that holds it, which kept this module and that one from naming
+/// each other.
+pub(super) use super::shared::Stop;
 
 /// The floor under the derived sweep interval, in the sense decision 5 of the
 /// idle-unload plan states it: half the window, floored here rather than at a
@@ -24,45 +28,6 @@ use super::slots::say;
 /// cannot express a window under two seconds, so only a test that builds its
 /// own window can drive the interval below this floor.
 const MIN_INTERVAL: Duration = Duration::from_millis(100);
-
-/// Wakes the reaper the moment [`super::Router::stop`] is called, rather than
-/// leaving it to sleep blind until its next scheduled sweep.
-///
-/// A `Condvar` beside a `Mutex<bool>`, because a plain sleep cannot be
-/// interrupted and a `Weak` alone is never dropped in the harness that runs
-/// every test in this repository -- `serve` never returns, so nothing ever
-/// drops the `Arc<Shared>` the reaper is watching.
-pub(super) struct Stop {
-    flag: Mutex<bool>,
-    condvar: Condvar,
-}
-
-impl Stop {
-    pub(super) fn new() -> Self {
-        Self {
-            flag: Mutex::new(false),
-            condvar: Condvar::new(),
-        }
-    }
-
-    /// Sets the flag and wakes anything waiting on it.
-    pub(super) fn signal(&self) {
-        *self.flag.lock().unwrap_or_else(PoisonError::into_inner) = true;
-        self.condvar.notify_all();
-    }
-
-    /// Waits up to `timeout`, returning early the moment [`Stop::signal`] is
-    /// called elsewhere. The return says which one happened, so a caller can
-    /// tell "stop" from "the deadline arrived".
-    pub(super) fn wait(&self, timeout: Duration) -> bool {
-        let flag = self.flag.lock().unwrap_or_else(PoisonError::into_inner);
-        let (flag, _) = self
-            .condvar
-            .wait_timeout_while(flag, timeout, |signalled| !*signalled)
-            .unwrap_or_else(PoisonError::into_inner);
-        *flag
-    }
-}
 
 /// Sweeps until [`Stop::signal`] fires or the router itself is gone.
 ///
@@ -103,13 +68,13 @@ pub(super) fn run(shared: &Weak<Shared>) {
         // this tick decides.
         let catalog = strong.catalog();
         for (id, status) in strong.slots.sweep_exited(&catalog) {
-            say(&format!(
+            strong.voice.say(&format!(
                 "{id} exited on its own ({status}); its slot was emptied, and the \
                  next request for it starts it again"
             ));
         }
         for id in strong.slots.sweep_idle(&catalog, &strong.idle_window) {
-            say(&format!(
+            strong.voice.say(&format!(
                 "{id} unloaded after sitting idle past its configured window"
             ));
         }
@@ -120,7 +85,8 @@ pub(super) fn run(shared: &Weak<Shared>) {
 mod tests {
     use super::*;
     use crate::queue::Wait;
-    use std::sync::Arc;
+    use std::sync::{Arc, mpsc};
+    use std::thread;
     use std::time::Instant;
 
     /// The mechanism decision 7 depends on: a wait ends the moment `signal`
@@ -132,11 +98,18 @@ mod tests {
     fn a_wait_ends_the_moment_signal_is_called_rather_than_at_its_timeout() {
         let stop = Arc::new(Stop::new());
         let signalling = Arc::clone(&stop);
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(20));
-            signalling.signal();
+        // Signalled once the waiter says it is about to wait, rather than
+        // after a pause: the signal lands as the wait begins or while it
+        // runs, and either must end it at once. What this refuses is a wait
+        // that sleeps out its timeout.
+        let (waiting, told) = mpsc::channel();
+        thread::spawn(move || {
+            if told.recv().is_ok() {
+                signalling.signal();
+            }
         });
 
+        waiting.send(()).expect("the signaller is listening");
         let started = Instant::now();
         let signalled = stop.wait(Duration::from_secs(10));
 
@@ -164,19 +137,25 @@ mod tests {
     /// configured interval.
     ///
     /// The window is ten minutes, which makes the derived interval far
-    /// longer than this test's own patience -- a `run` that only reacted to
-    /// its next scheduled tick would make this test hang rather than fail an
-    /// assertion. Nothing here starts a process: the catalog's one entry is
-    /// never requested, so `Server` is never asked to spawn anything and its
-    /// binary path only has to exist, not run.
+    /// longer than this test's own patience -- so the end is awaited with a
+    /// deadline, and a `run` that only reacted to its next scheduled tick
+    /// fails at that deadline rather than hanging the test. Nothing here
+    /// starts a process: the catalog's one entry is never requested, so
+    /// `Server` is never asked to spawn anything and its binary path only
+    /// has to exist, not run.
     #[test]
     fn a_live_reaper_ends_promptly_when_stop_is_signalled_rather_than_at_its_scheduled_sweep() {
+        use super::super::permits::Permits;
+        use super::super::slots::Slots;
+        use crate::access::Access;
         use crate::admission::Budget;
         use crate::catalog::Catalog;
         use crate::idle::IdleWindow;
         use crate::launch::Server;
+        use crate::voice::Voice;
+        use std::env;
         use std::path::PathBuf;
-        use std::sync::Mutex;
+        use std::sync::{Mutex, RwLock};
 
         let catalog = Catalog::parse(
             "version = 1\n\
@@ -192,14 +171,18 @@ mod tests {
         )
         .expect("a usable catalog");
         let server = Server::located(Some(
-            &std::env::current_exe().expect("this test binary's own path"),
+            &env::current_exe().expect("this test binary's own path"),
         ))
         .expect("this test binary's own path is a file");
-        let slots =
-            super::super::slots::Slots::new(&catalog, Budget::new(None), Wait::new(Duration::ZERO));
+        let slots = Slots::new(
+            &catalog,
+            Budget::new(None),
+            Wait::new(Duration::ZERO),
+            Voice::default(),
+        );
 
         let shared = Arc::new(Shared {
-            catalog: std::sync::RwLock::new(Arc::new(catalog)),
+            catalog: RwLock::new(Arc::new(catalog)),
             // Never read: this test signals a reaper and never reloads.
             source: PathBuf::from("/tmp/unused-catalog.toml"),
             root: PathBuf::from("/tmp"),
@@ -207,30 +190,33 @@ mod tests {
             slots,
             resident_failures: Mutex::new(Vec::new()),
             idle_window: IdleWindow::new(Duration::from_secs(600)),
-            access: super::super::Access::default(),
+            access: Access::default(),
             stall: Duration::from_secs(60),
-            permits: super::super::listen::Permits::new(1),
+            permits: Permits::new(1),
             stop: Stop::new(),
+            voice: Voice::default(),
         });
 
         let weak = Arc::downgrade(&shared);
-        let reaping = std::thread::spawn(move || run(&weak));
+        let (reaping_now, told) = mpsc::channel();
+        let (reaped, ended) = mpsc::channel();
+        thread::spawn(move || {
+            reaping_now.send(()).ok();
+            run(&weak);
+            reaped.send(()).ok();
+        });
 
-        // A brief pause, so the reaper has actually entered its wait before
-        // this signals it -- a signal that arrived before the wait began
-        // would prove nothing about promptness.
-        std::thread::sleep(Duration::from_millis(50));
+        // Signalled once the reaper's thread says it is running, rather than
+        // after a pause: the signal lands as the reaper enters its wait or
+        // while it waits, and either must end it at once. A reaper that
+        // slept out its ten-minute interval would miss the deadline whichever.
+        told.recv().expect("the reaper's thread started");
 
-        let started = Instant::now();
         shared.stop.signal();
-        reaping.join().expect("the reaper thread does not panic");
-
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
+        ended.recv_timeout(Duration::from_secs(5)).expect(
             "a reaper configured with a ten-minute sweep interval must still \
              end within moments of stop being signalled, rather than \
-             sleeping out its interval: waited {:?}",
-            started.elapsed()
+             sleeping out its interval",
         );
     }
 }

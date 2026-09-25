@@ -15,7 +15,7 @@
 //! its mind would trade the property this slice exists for against a nicer
 //! message.
 
-use std::io::{BufReader, ErrorKind, Read, Write};
+use std::io::{self, BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -47,7 +47,7 @@ pub(super) fn run(
     body: Option<&[u8]>,
     reader: &mut BufReader<&TcpStream>,
     downstream: &TcpStream,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let endpoint = child.endpoint();
     let mut upstream = upstream_to(endpoint)?;
     upstream.write_all(head.rewrite(endpoint).as_bytes())?;
@@ -76,7 +76,7 @@ pub(super) fn run(
 /// back behind its own head for as long as the child delays that
 /// acknowledgement. A socket that will not take the setting is still a
 /// connection, and is used as one.
-fn upstream_to(endpoint: SocketAddr) -> std::io::Result<TcpStream> {
+fn upstream_to(endpoint: SocketAddr) -> io::Result<TcpStream> {
     let upstream = TcpStream::connect(endpoint)?;
     drop(upstream.set_nodelay(true));
     Ok(upstream)
@@ -91,19 +91,22 @@ fn forward_body(
     head: &Head,
     reader: &mut BufReader<&TcpStream>,
     upstream: &mut TcpStream,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let mut remaining = head.body_bytes();
     let mut buffer = [0u8; BUFFER];
     while remaining > 0 {
+        // All of the buffer, or as much of it as the body still has to fill.
+        // Neither `get` misses: `want` is at most the buffer's length, and a
+        // read never reports more than it was given room for.
         let want = remaining.min(BUFFER);
-        let read = reader.read(&mut buffer[..want])?;
+        let read = reader.read(buffer.get_mut(..want).unwrap_or_default())?;
         if read == 0 {
             // The caller declared more than it sent. The child is given what
             // arrived and decides for itself; guessing here would be this
             // router having an opinion about a body it does not read.
             break;
         }
-        upstream.write_all(&buffer[..read])?;
+        upstream.write_all(buffer.get(..read).unwrap_or_default())?;
         remaining -= read;
     }
     Ok(())
@@ -120,8 +123,8 @@ const WATCH: Duration = Duration::from_millis(100);
 ///
 /// The flush is the whole slice. A buffered writer that flushed when its
 /// buffer filled would batch a stream into one delivery, and the reply text
-/// would be identical either way -- which is why `tests/streaming.rs` asserts
-/// when bytes arrive rather than what they say.
+/// would be identical either way -- which is why `tests/it/stream_timing.rs`
+/// asserts when bytes arrive rather than what they say.
 ///
 /// The caller is watched while this runs. A write that fails tells the relay
 /// its caller left, but only once there is something to write, and a model
@@ -213,7 +216,10 @@ fn relay_response(mut upstream: &TcpStream, mut downstream: &TcpStream) {
             Ok(read) => read,
         };
 
-        if downstream.write_all(&buffer[..read]).is_err() || downstream.flush().is_err() {
+        // A read never reports more than it was given room for, so this
+        // `get` never misses.
+        let bytes = buffer.get(..read).unwrap_or_default();
+        if downstream.write_all(bytes).is_err() || downstream.flush().is_err() {
             // The caller hung up mid-answer. Returning drops the upstream
             // socket, which stops the child generating.
             return;
@@ -224,6 +230,7 @@ fn relay_response(mut upstream: &TcpStream, mut downstream: &TcpStream) {
 #[cfg(test)]
 mod tests {
     use std::net::TcpListener;
+    use std::sync::mpsc;
 
     use super::*;
 
@@ -250,14 +257,11 @@ mod tests {
         thread::spawn(move || {
             // Far more than any pair of socket buffers holds, so writes to a
             // caller that reads nothing block.
+            // The first write that fails ends them.
             let chunk = vec![b'x'; 1 << 20];
-            for _ in 0..512 {
-                if child.write_all(&chunk).is_err() {
-                    break;
-                }
-            }
+            drop((0..512).try_for_each(|_| child.write_all(&chunk)));
         });
-        let (done, finished) = std::sync::mpsc::channel();
+        let (done, finished) = mpsc::channel();
         thread::spawn(move || {
             copy_response(&upstream, &downstream);
             done.send(()).ok();
@@ -266,6 +270,40 @@ mod tests {
         finished
             .recv_timeout(Duration::from_secs(30))
             .expect("the relay gave up on a caller that read nothing");
+    }
+
+    #[test]
+    fn the_body_forwarded_is_exactly_the_length_the_caller_declared() {
+        // Longer than one buffer, so the copy has to loop, and followed by
+        // bytes the declaration does not cover, which are not the body's.
+        let body = vec![b'b'; BUFFER + 5];
+        let head = super::super::head::parse(&[
+            "POST /models/gemma3/v1/completions HTTP/1.1".to_owned(),
+            format!("Content-Length: {}", body.len()),
+        ])
+        .expect("a well-formed head");
+        let (mut caller, downstream) = connection();
+        caller.write_all(&body).expect("the body, written");
+        caller.write_all(b"after").expect("what follows, written");
+        // Ended, so a copy that wanted more than was sent reads the end
+        // rather than waiting for bytes that are never coming.
+        caller
+            .shutdown(Shutdown::Write)
+            .expect("the caller's side, ended");
+        let (mut upstream, mut child) = connection();
+
+        forward_body(&head, &mut BufReader::new(&downstream), &mut upstream)
+            .expect("the body, forwarded");
+        drop(upstream);
+
+        let mut forwarded = Vec::new();
+        child
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a read timeout");
+        child
+            .read_to_end(&mut forwarded)
+            .expect("the child reads what was forwarded");
+        assert_eq!(forwarded, body, "the declared body, and nothing past it");
     }
 
     #[test]

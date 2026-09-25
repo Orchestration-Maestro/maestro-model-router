@@ -1,19 +1,24 @@
 //! Running the measurements, and saying what they mean.
 //!
-//! Separated from the measuring itself so that `bench.rs` stays about one
+//! Separated from the measuring itself so that `measure.rs` stays about one
 //! entry -- start it, read it, stop it -- while the loop over a catalog, the
 //! table, and the estimates a reading supports live where a reader looking for
 //! output goes to find them.
+//!
+//! Written to a writer the caller hands in rather than printed here: the
+//! library says what it found, and the binary decides where that goes.
 
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::Measurement;
-use crate::catalog::Catalog;
-use crate::launch::{Server, models_root};
+use super::measure::{self, Measurement};
+use crate::catalog::{Catalog, Entry};
+use crate::launch::{LineSink, Server, models_root};
 
-/// Loads each entry in turn, measures it, and prints what it found.
+/// Loads each entry in turn, measures it, and writes what it found to `out`,
+/// passing every line a child writes on to `sink`.
 ///
 /// One at a time, and never two. The number wanted is what a single entry
 /// costs; two resident at once would attribute one model's pages to the
@@ -24,14 +29,22 @@ use crate::launch::{Server, models_root};
 ///
 /// Returns a complaint when the catalog cannot be read or parsed, when there
 /// is nowhere to resolve its locations against, when no server binary can be
-/// found, or when a requested entry is not in the catalog. A single entry
-/// that fails to load is reported in its row and does not stop the rest.
-pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
-    let text =
-        fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+/// found, when a requested entry is not in the catalog, or when `out` cannot
+/// be written to. A single entry that fails to load is reported in its row
+/// and does not stop the rest.
+pub fn command(
+    path: &Path,
+    only: Option<&str>,
+    sink: LineSink,
+    out: &mut impl Write,
+) -> Result<(), String> {
+    let text = fs::read_to_string(path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     let parsed = Catalog::parse(&text).map_err(|report| format!("{report}"))?;
     let root = models_root().map_err(|failure| failure.to_string())?;
-    let server = Server::located(None).map_err(|failure| failure.to_string())?;
+    let server = Server::located(None)
+        .map_err(|failure| failure.to_string())?
+        .with_sink(sink);
 
     let wanted: Vec<_> = parsed
         .entries
@@ -46,21 +59,30 @@ pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
         ));
     }
 
-    println!(
+    table(&server, &wanted, &root, out)
+        .map_err(|error| format!("cannot write the measurements: {error}"))
+}
+
+/// The table of measurements, one row per entry, then what they support.
+fn table(server: &Server, wanted: &[&Entry], root: &Path, out: &mut impl Write) -> io::Result<()> {
+    writeln!(
+        out,
         "{:<20} {:>9} {:>9} {:>8} {:>10}",
         "entry", "declared", "measured", "load", "rate"
-    );
+    )?;
 
     let mut measured = Vec::new();
     for entry in wanted {
-        // Printed before the load, because a large model is minutes and a
-        // silent terminal looks like a hang.
-        print!("{:<20} {:>9} ", entry.id, entry.memory_estimate_mib);
-        let _ = std::io::stdout().flush();
+        // Written before the load, because a large model is minutes and a
+        // silent terminal looks like a hang. A flush that fails changes
+        // nothing about the measurement, so it is not a reason to stop.
+        write!(out, "{:<20} {:>9} ", entry.id, entry.memory_estimate_mib)?;
+        drop(out.flush());
 
-        match super::entry(&server, entry, &root) {
+        match measure::entry(server, entry, root) {
             Ok(reading) => {
-                println!(
+                writeln!(
+                    out,
                     "{:>9} {:>7.1}s {:>10}",
                     reading
                         .measured_mib
@@ -73,15 +95,14 @@ pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
                             format!("{figure:.1} {unit}")
                         }
                     )
-                );
+                )?;
                 measured.push(reading);
             }
-            Err(failure) => println!("{:>9} {:>8} {:>10}  {failure}", "--", "--", "--"),
+            Err(failure) => writeln!(out, "{:>9} {:>8} {:>10}  {failure}", "--", "--", "--")?,
         }
     }
 
-    recommendations(&measured);
-    Ok(())
+    recommendations(&measured, out)
 }
 
 /// What to put in the catalog, for a person to paste.
@@ -89,7 +110,7 @@ pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
 /// Deliberately not written back: the shipped catalog's comments carry the
 /// reasoning for the numbers beside them, and the more valuable half of that
 /// file is the half a naive writer would destroy.
-fn recommendations(measured: &[Measurement]) {
+fn recommendations(measured: &[Measurement], out: &mut impl Write) -> io::Result<()> {
     let corrections: Vec<_> = measured
         .iter()
         .filter_map(|reading| Some((reading, reading.recommended_mib()?)))
@@ -97,21 +118,23 @@ fn recommendations(measured: &[Measurement]) {
         .collect();
 
     if corrections.is_empty() {
-        return;
+        return Ok(());
     }
 
-    println!("\nestimates these measurements support:\n");
+    writeln!(out, "\nestimates these measurements support:\n")?;
     for (reading, wants) in corrections {
         let measured_mib = reading.measured_mib.unwrap_or_default();
-        println!("[models.{}]", reading.id);
-        println!(
+        writeln!(out, "[models.{}]", reading.id)?;
+        writeln!(
+            out,
             "# Measured {measured_mib} MiB resident on {}; a twentieth over,\n\
              # to a quarter gibibyte. Was {} MiB.",
             today(),
             reading.declared_mib
-        );
-        println!("memory_estimate_mib = {wants}\n");
+        )?;
+        writeln!(out, "memory_estimate_mib = {wants}\n")?;
     }
+    Ok(())
 }
 
 /// Today, as a date a comment can carry.
@@ -120,15 +143,15 @@ fn recommendations(measured: &[Measurement]) {
 /// tenants and the context actually used all move it. Recording when it was
 /// taken is what lets a later reader distrust it by the right amount.
 fn today() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     date_of(seconds)
 }
 
 /// The date a number of seconds since the Unix epoch falls on, as `YYYY-MM-DD`.
 ///
-/// Civil-from-days, for the one date this prints. A calendar crate would be
+/// Civil-from-days, for the one date this writes. A calendar crate would be
 /// a dependency bought for a comment.
 fn date_of(seconds: u64) -> String {
     let (mut year, mut remaining) = (1970_u64, seconds / 86_400);
@@ -156,8 +179,11 @@ fn date_of(seconds: u64) -> String {
         31,
     ];
     let mut month = 0;
-    while remaining >= lengths[month] {
-        remaining -= lengths[month];
+    for length in lengths {
+        if remaining < length {
+            break;
+        }
+        remaining -= length;
         month += 1;
     }
     format!("{year:04}-{:02}-{:02}", month + 1, remaining + 1)
@@ -170,7 +196,46 @@ const fn leap(year: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
     use super::*;
+
+    /// Runs `work` on a thread of its own and gives it five seconds, so that a
+    /// calendar loop which never ends fails its test rather than hanging the
+    /// whole run.
+    fn promptly<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || sender.send(work()));
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("finished within five seconds")
+    }
+
+    #[test]
+    fn a_measurement_that_disagrees_with_its_estimate_is_written_out_to_paste() {
+        let reading = Measurement {
+            id: "gemma3".to_owned(),
+            declared_mib: 512,
+            measured_mib: Some(1000),
+            load: Duration::ZERO,
+            throughput: None,
+        };
+        let out = promptly(move || {
+            let mut out = Vec::new();
+            recommendations(&[reading], &mut out).map(|()| out)
+        })
+        .expect("a vector takes every write");
+        let said = String::from_utf8(out).expect("written as text");
+        assert!(
+            said.contains("[models.gemma3]")
+                && said.contains("Was 512 MiB")
+                && said.contains("memory_estimate_mib = 1280"),
+            "the entry, what it declared, and a twentieth over 1000 MiB rounded \
+             to a quarter gibibyte:\n{said}"
+        );
+    }
 
     #[test]
     fn a_leap_year_is_every_fourth_except_centuries_not_divisible_by_four_hundred() {
@@ -182,17 +247,23 @@ mod tests {
 
     #[test]
     fn seconds_since_the_epoch_land_on_their_calendar_date() {
-        // Hand-checked instants: the epoch itself, a leap day, the first day
-        // after a century that was not a leap year, and a recent date.
-        assert_eq!(date_of(0), "1970-01-01");
-        assert_eq!(date_of(951_782_400), "2000-02-29");
-        assert_eq!(date_of(4_107_542_400), "2100-03-01");
-        assert_eq!(date_of(1_790_208_000), "2026-09-24");
+        // Hand-checked instants: the epoch itself, the first day of the next
+        // year, a leap day, the first day after a century that was not a leap
+        // year, and a recent date.
+        for (seconds, date) in [
+            (0, "1970-01-01"),
+            (31_536_000, "1971-01-01"),
+            (951_782_400, "2000-02-29"),
+            (4_107_542_400, "2100-03-01"),
+            (1_790_208_000, "2026-09-24"),
+        ] {
+            assert_eq!(promptly(move || date_of(seconds)), date);
+        }
     }
 
     #[test]
     fn today_is_the_date_the_clock_gives() {
-        let today = today();
+        let today = promptly(today);
         assert!(
             today.len() == 10 && today.as_str() >= "2026-09-24",
             "a date, and none earlier than this test: {today:?}"

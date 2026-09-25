@@ -9,11 +9,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use toml::{Table, Value};
 
+use super::entry::{Entry, Residency};
 use super::field::{
     as_location, as_positive, as_residency, as_runtime, as_text, flags, optional, problem,
     report_unknown, required, table_at,
 };
-use super::{Entry, Report, Residency};
+use super::report::Report;
 
 /// Fields an entry may carry.
 const ENTRY_FIELDS: &[&str] = &[
@@ -94,11 +95,10 @@ pub(super) struct Drafts {
 pub(super) fn drafts(text: &str) -> Result<Drafts, Report> {
     let table = text
         .parse::<Table>()
-        .map_err(|e| Report::single(format!("the catalog is not valid TOML: {e}")))?;
+        .map_err(|error| Report::single(format!("the catalog is not valid TOML: {error}")))?;
     let mut drafts = Drafts::default();
     drafts.version = version(&table, &mut drafts.problems);
-    drafts.defaults = defaults(&table, &mut drafts.problems);
-    let defaults = std::mem::take(&mut drafts.defaults);
+    let defaults = defaults(&table, &mut drafts.problems);
     drafts.entries = entries(&table, &defaults, &mut drafts);
     drafts.defaults = defaults;
     Ok(drafts)

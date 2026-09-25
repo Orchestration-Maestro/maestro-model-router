@@ -17,7 +17,6 @@
 //! model is let go; one that fits outright goes ahead, and one that would
 //! take room goes in the order it asked.
 
-use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{MutexGuard, PoisonError};
@@ -28,48 +27,8 @@ use crate::catalog::{Catalog, Entry};
 use crate::launch::{Failure, Server};
 
 use super::lease::Lease;
-use super::{Slots, say};
-
-/// The requests waiting for room, oldest first, under the admission lock.
-#[derive(Debug, Default)]
-pub(in crate::proxy) struct Queue {
-    waiting: VecDeque<u64>,
-    issued: u64,
-    /// How often the catalog has been swapped, so a request that waited
-    /// through a reload can tell.
-    pub(super) reloads: u64,
-}
-
-impl Queue {
-    /// Whether a request may take room now: nobody who asked before it is
-    /// still waiting. One not yet in line may only when nobody is.
-    fn may_take(&self, ticket: Option<u64>) -> bool {
-        self.waiting
-            .front()
-            .is_none_or(|first| Some(*first) == ticket)
-    }
-
-    /// Puts a request in line, once.
-    fn join(&mut self, ticket: &mut Option<u64>) {
-        if ticket.is_none() {
-            self.issued += 1;
-            self.waiting.push_back(self.issued);
-            *ticket = Some(self.issued);
-        }
-    }
-
-    /// Takes a request out of line, saying whether it was in it.
-    fn leave(&mut self, ticket: Option<u64>) -> bool {
-        let before = self.waiting.len();
-        self.waiting.retain(|waiting| Some(*waiting) != ticket);
-        self.waiting.len() != before
-    }
-
-    /// How many requests are in line.
-    fn len(&self) -> usize {
-        self.waiting.len()
-    }
-}
+use super::queue::Queue;
+use super::table::Slots;
 
 /// What one look at the room came to.
 enum Room {
@@ -169,7 +128,7 @@ impl Slots {
                 entry.id
             ))),
             Decision::Unload(ids) => {
-                say(&format!(
+                self.voice.say(&format!(
                     "{}: unloading {} to make room",
                     entry.id,
                     ids.join(", ")
@@ -178,9 +137,9 @@ impl Slots {
                     Ok(()) => Ok(Room::Made),
                     // Something started reading the model whose room this
                     // wanted, between the decision and the taking.
-                    // `tests/eviction.rs` tells this apart from a snapshot
-                    // that already saw it busy by "reached first", because
-                    // what the two leave behind differs.
+                    // `tests/it/eviction_policy.rs` tells this apart from a
+                    // snapshot that already saw it busy by "reached first",
+                    // because what the two leave behind differs.
                     Err(blocker) => Ok(Room::Held(format!(
                         "'{}' needs room held by '{blocker}', which a request \
                          reached first",
@@ -222,41 +181,4 @@ fn refused(entry: &Entry, held: &str, waited: Duration) -> Failure {
         entry.id,
         waited.as_secs()
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_empty_line_lets_anyone_take_room() {
-        assert!(Queue::default().may_take(None));
-    }
-
-    #[test]
-    fn only_the_oldest_in_line_may_take_room() {
-        let mut queue = Queue::default();
-        let (mut first, mut second) = (None, None);
-        queue.join(&mut first);
-        queue.join(&mut second);
-
-        assert!(queue.may_take(first), "the oldest may");
-        assert!(!queue.may_take(second), "a later one may not");
-        assert!(!queue.may_take(None), "nor one not yet in line");
-    }
-
-    #[test]
-    fn joining_twice_keeps_one_place_and_leaving_hands_it_on() {
-        let mut queue = Queue::default();
-        let (mut first, mut second) = (None, None);
-        queue.join(&mut first);
-        queue.join(&mut first);
-        queue.join(&mut second);
-        assert_ne!(first, second, "each request its own place");
-
-        assert!(queue.leave(first), "the oldest was in line");
-        assert!(queue.may_take(second), "and the next is now first");
-        assert!(!queue.leave(first), "and is not in it twice");
-        assert!(!queue.leave(None), "a request never in line leaves nothing");
-    }
 }

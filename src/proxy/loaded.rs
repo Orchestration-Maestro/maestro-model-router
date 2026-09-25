@@ -56,7 +56,8 @@ pub(super) struct Loaded<C = Child> {
 /// The compiler cannot keep this rule, because it is about where clones are
 /// made rather than about types. So the type says it, and the gate that fails
 /// when it breaks is `a_child_with_a_stream_in_flight_is_not_unloaded` in
-/// `tests/eviction.rs`, which drives a real reader against a real decision.
+/// `tests/it/eviction_policy.rs`, which drives a real reader against a real
+/// decision.
 pub(super) type Slot<C = Child> = Mutex<Option<Loaded<C>>>;
 
 /// Whether anything besides its slot is holding this child.

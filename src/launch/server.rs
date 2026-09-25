@@ -4,13 +4,17 @@
 //! [`Child`], [`Liveness`] -- lives beside this, because those are the types
 //! that outlive the call and this is only the work that produces them.
 
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
-use super::binary::{BINARY_NAME, on_search_path, runtime_binary, runtime_named};
-use super::{Child, Failure, Liveness, invocation, probe};
+use super::child::{Child, Liveness};
+use super::failure::Failure;
+use super::output::LineSink;
+use super::{binary, invocation, probe};
 use crate::catalog::Entry;
 
 /// How often readiness is asked for while a model loads.
@@ -23,6 +27,8 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[derive(Debug)]
 pub struct Server {
     binary: PathBuf,
+    /// Where every child started from here passes its lines on to.
+    sink: LineSink,
 }
 
 impl Server {
@@ -34,27 +40,18 @@ impl Server {
     /// Returns a [`Failure`] when a configured path does not exist, or when
     /// nothing named `llama-server` is on the search path.
     pub fn located(configured: Option<&Path>) -> Result<Self, Failure> {
-        if let Some(path) = configured {
-            return if path.is_file() {
-                Ok(Self {
-                    binary: path.to_path_buf(),
-                })
-            } else {
-                Err(Failure::Unavailable(format!(
-                    "the configured server binary is not there: '{}'",
-                    path.display()
-                )))
-            };
-        }
+        Ok(Self {
+            binary: binary::located(configured)?,
+            sink: LineSink::default(),
+        })
+    }
 
-        on_search_path(BINARY_NAME)
-            .map(|binary| Self { binary })
-            .ok_or_else(|| {
-                Failure::Unavailable(format!(
-                    "no server binary was configured, and no '{BINARY_NAME}' \
-                     was found on the search path"
-                ))
-            })
+    /// The same server, with every child it starts passing the lines it
+    /// writes on to `sink`. Without this they are kept for a failure to quote
+    /// and passed on nowhere.
+    #[must_use]
+    pub fn with_sink(self, sink: LineSink) -> Self {
+        Self { sink, ..self }
     }
 
     /// Starts one entry and returns once it is ready to answer.
@@ -134,7 +131,7 @@ impl Server {
                     false,
                 ));
             }
-            std::thread::sleep(POLL_INTERVAL);
+            thread::sleep(POLL_INTERVAL);
         }
     }
 
@@ -163,31 +160,6 @@ impl Server {
     }
 
     /// A running child, before anything has asked whether it is ready.
-    /// The binary this entry is served from.
-    ///
-    /// The one the router was started with, unless the entry names a runtime.
-    /// A named one resolves on the search path as `llama-server-<name>`, which
-    /// is how an operator points at a second build without the catalog
-    /// carrying a path: the catalog says *which*, the machine says *where*.
-    ///
-    /// Resolved per start rather than once, because one router serves entries
-    /// that need different builds and a single binary chosen at startup cannot
-    /// be right for both.
-    fn binary_for(&self, entry: &Entry) -> Result<PathBuf, Failure> {
-        let Some(runtime) = entry.runtime.as_deref() else {
-            return Ok(self.binary.clone());
-        };
-
-        runtime_binary(runtime).ok_or_else(|| {
-            Failure::Unavailable(format!(
-                "entry '{}' needs the '{runtime}' runtime, and nothing named \
-                 '{}' is on the search path",
-                entry.id,
-                runtime_named(runtime)
-            ))
-        })
-    }
-
     fn spawn(&self, entry: &Entry, root: &Path) -> Result<Child, Failure> {
         // Checked before spawning, so a missing model is reported as a missing
         // model rather than as whatever exit status the server chooses for it.
@@ -209,7 +181,7 @@ impl Server {
         // and is recorded as a risk rather than half-built here.
         //
         // Output is piped and drained, never inherited: `output` says why.
-        let process = Command::new(self.binary_for(entry)?)
+        let process = Command::new(binary::for_entry(&self.binary, entry)?)
             .args(invocation::of(entry, root, port))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -226,6 +198,7 @@ impl Server {
             entry.id.clone(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
             process,
+            &self.sink,
         ))
     }
 }
@@ -238,8 +211,20 @@ impl Server {
 /// does not retry. The alternatives are worse -- passing the descriptor to the
 /// child is not portable to Windows, and a fixed base port with an offset
 /// collides with whatever else is already on the machine.
-fn free_port() -> std::io::Result<u16> {
+fn free_port() -> io::Result<u16> {
     let listener = TcpListener::bind((invocation::HOST, 0))?;
     let port = listener.local_addr()?.port();
     Ok(port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Zero asks the system for any port. A child handed it would bind one
+    // nobody probes, so what is handed on is the port the system assigned.
+    #[test]
+    fn a_free_port_is_the_one_the_system_assigned_rather_than_any() {
+        assert_ne!(free_port().expect("a loopback port"), 0);
+    }
 }

@@ -9,7 +9,7 @@
 //! that reports "unknown", never a wrong number, because a wrong number here
 //! becomes a decision to start a model there is no room for.
 
-use super::DeviceMemory;
+use super::figures::DeviceMemory;
 
 /// One mebibyte in kibibytes, the unit `ps` and `/proc/meminfo` speak.
 pub(super) const KIB_PER_MIB: u64 = 1024;
@@ -179,5 +179,11 @@ mod tests {
             tasklist_rss("INFO: No tasks are running which match the specified criteria.\r\n"),
             None
         );
+    }
+
+    #[test]
+    fn a_resident_set_in_another_unit_is_not_read_as_kibibytes() {
+        let text = "\"stub-llama-server.exe\",\"1234\",\"Console\",\"1\",\"12,345 MB\"\r\n";
+        assert_eq!(tasklist_rss(text), None);
     }
 }

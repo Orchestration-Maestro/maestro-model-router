@@ -7,11 +7,13 @@
 //! record anywhere of what it had said.
 //!
 //! Each stream is drained on a thread of its own instead. Every line goes on
-//! to the router's own standard error, prefixed with the entry it came from,
-//! so a service manager's journal keeps it; and the last few are kept, so a
-//! child that dies while loading can be asked what it said on the way out.
+//! to the [`LineSink`] the binary chose, with the entry it came from -- the
+//! router's own standard error, so a service manager's journal keeps it; and
+//! the last few are kept, so a child that dies while loading can be asked what
+//! it said on the way out.
 
 use std::collections::VecDeque;
+use std::fmt;
 use std::io::{BufRead, BufReader, Read};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread;
@@ -29,6 +31,39 @@ const LONGEST_LINE: u64 = 4096;
 /// words are read before they are quoted.
 const SETTLE: Duration = Duration::from_millis(500);
 
+/// Where the lines a child writes are passed on to: the entry's id and the
+/// line, without its line ending.
+///
+/// Chosen by the binary rather than here, because a library does not print:
+/// the router hands in one that writes to its own standard error, and a
+/// caller that hands in none still has the last lines kept for a failure to
+/// quote, with nothing passed on.
+#[derive(Clone)]
+pub struct LineSink(Arc<PassOn>);
+
+/// What a [`LineSink`] calls with each line: the entry's id, then the line.
+type PassOn = dyn Fn(&str, &str) + Send + Sync;
+
+impl LineSink {
+    /// A sink that passes each line to `pass_on`, with the entry it came from.
+    pub fn new(pass_on: impl Fn(&str, &str) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(pass_on))
+    }
+}
+
+/// Passes nothing on.
+impl Default for LineSink {
+    fn default() -> Self {
+        Self::new(|_, _| {})
+    }
+}
+
+impl fmt::Debug for LineSink {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("LineSink")
+    }
+}
+
 /// A child's output, as the threads draining it keep it.
 #[derive(Debug, Default)]
 struct Kept {
@@ -44,9 +79,11 @@ struct Kept {
 pub(crate) struct Said(Arc<Kept>);
 
 impl Said {
-    /// Drains one of a child's output streams on a thread of its own.
-    pub(crate) fn drain(&self, id: &str, stream: impl Read + Send + 'static) {
+    /// Drains one of a child's output streams on a thread of its own, passing
+    /// each line on to `sink`.
+    pub(crate) fn drain(&self, id: &str, stream: impl Read + Send + 'static, sink: &LineSink) {
         let said = self.clone();
+        let sink = sink.clone();
         let id = id.to_owned();
         *said.0.open.lock().unwrap_or_else(PoisonError::into_inner) += 1;
         thread::spawn(move || {
@@ -59,7 +96,7 @@ impl Said {
                     .read_until(b'\n', &mut line)
                 {
                     Ok(0) | Err(_) => break,
-                    Ok(_) => said.passed_on(&id, &String::from_utf8_lossy(&line)),
+                    Ok(_) => said.passed_on(&id, &String::from_utf8_lossy(&line), &sink),
                 }
             }
             *said.0.open.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
@@ -67,9 +104,9 @@ impl Said {
         });
     }
 
-    fn passed_on(&self, id: &str, line: &str) {
+    fn passed_on(&self, id: &str, line: &str, sink: &LineSink) {
         let line = line.trim_end_matches(['\r', '\n']);
-        eprintln!("{id}: {line}");
+        (sink.0)(id, line);
         let mut lines = self.0.lines.lock().unwrap_or_else(PoisonError::into_inner);
         if lines.len() == KEPT {
             lines.pop_front();
@@ -94,16 +131,28 @@ impl Said {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::io::{self, Cursor, Write};
+    use std::sync::mpsc;
     use std::time::Instant;
 
     use super::*;
+
+    // Closures have no `Debug`, so the server a sink travels in would print
+    // nothing where it sits; it prints its name instead.
+    #[test]
+    fn a_sink_is_debugged_by_its_name() {
+        assert_eq!(format!("{:?}", LineSink::default()), "LineSink");
+    }
 
     #[test]
     fn the_last_lines_are_kept_and_the_oldest_are_let_go() {
         let said = Said::default();
         let output = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n";
-        said.drain("model", std::io::Cursor::new(output.as_bytes().to_vec()));
+        said.drain(
+            "model",
+            Cursor::new(output.as_bytes().to_vec()),
+            &LineSink::default(),
+        );
 
         assert_eq!(
             said.last(),
@@ -113,10 +162,26 @@ mod tests {
     }
 
     #[test]
+    fn every_line_is_passed_on_with_the_entry_it_came_from_and_without_its_ending() {
+        let said = Said::default();
+        let (heard, hearing) = mpsc::channel();
+        let sink = LineSink::new(move |id, line| drop(heard.send(format!("{id}: {line}"))));
+        said.drain("model", Cursor::new(b"one\r\ntwo\n".to_vec()), &sink);
+
+        assert_eq!(said.last(), ["one", "two"], "the stream has ended");
+        let passed: Vec<String> = hearing.try_iter().collect();
+        assert_eq!(passed, ["model: one", "model: two"]);
+    }
+
+    #[test]
     fn a_line_without_an_end_is_split_rather_than_held() {
         let said = Said::default();
         let long = "x".repeat(5000);
-        said.drain("model", std::io::Cursor::new(long.into_bytes()));
+        said.drain(
+            "model",
+            Cursor::new(long.into_bytes()),
+            &LineSink::default(),
+        );
 
         let last = said.last();
         assert_eq!(last.len(), 2, "split at the longest line: {last:?}");
@@ -127,23 +192,31 @@ mod tests {
     #[test]
     fn output_that_is_not_text_is_kept_readable() {
         let said = Said::default();
-        said.drain("model", std::io::Cursor::new(vec![b'o', b'k', 0xff, b'\n']));
+        said.drain(
+            "model",
+            Cursor::new(vec![b'o', b'k', 0xff, b'\n']),
+            &LineSink::default(),
+        );
         assert_eq!(said.last(), ["ok\u{fffd}"]);
     }
 
     #[test]
     fn a_stream_still_open_is_waited_for_until_it_ends() {
         let said = Said::default();
-        let (output, mut child) = std::io::pipe().expect("a pipe");
-        said.drain("model", output);
+        let (output, mut child) = io::pipe().expect("a pipe");
+        said.drain("model", output, &LineSink::default());
+        let (asking, asked) = mpsc::channel();
         let speaking = thread::spawn(move || {
             child
                 .write_all(b"early\n")
                 .expect("the first line, written");
-            thread::sleep(Duration::from_millis(100));
+            // The last line waits until its words are being asked for, so the
+            // stream is still open when they are.
+            asked.recv().expect("the words, about to be asked for");
             child.write_all(b"late\n").expect("the last line, written");
         });
 
+        asking.send(()).expect("the child is still speaking");
         assert_eq!(
             said.last(),
             ["early", "late"],
@@ -155,7 +228,11 @@ mod tests {
     #[test]
     fn once_every_stream_has_ended_its_lines_are_given_at_once() {
         let said = Said::default();
-        said.drain("model", std::io::Cursor::new(b"done\n".to_vec()));
+        said.drain(
+            "model",
+            Cursor::new(b"done\n".to_vec()),
+            &LineSink::default(),
+        );
         let started = Instant::now();
 
         assert_eq!(said.last(), ["done"]);
@@ -171,9 +248,9 @@ mod tests {
         // What a grandchild does when it inherits the pipe and outlives the
         // child: the stream stays open with nobody left to end it.
         let said = Said::default();
-        let (output, mut held) = std::io::pipe().expect("a pipe");
+        let (output, mut held) = io::pipe().expect("a pipe");
         held.write_all(b"still here\n").expect("a line, written");
-        said.drain("model", output);
+        said.drain("model", output, &LineSink::default());
         let started = Instant::now();
 
         assert_eq!(said.last(), ["still here"]);

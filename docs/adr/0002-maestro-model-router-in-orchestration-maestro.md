@@ -39,8 +39,8 @@ v1.2.1, and with it these changes to what the code promised:
   `Command::env`.
 - **Tests on Linux, macOS and Windows** on every pull request, because the
   router claims all three.
-- **The no-machine-paths rule is a test**, `tests/paths.rs`. It lived in the
-  old organization's shared workflow, which went with it.
+- **The no-machine-paths rule is a test**, `tests/it/machine_paths.rs`. It
+  lived in the old organization's shared workflow, which went with it.
 - **The full eviction sweep runs weekly** in its own workflow, as it did in the
   old heavy tier.
 

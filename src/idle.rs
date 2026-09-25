@@ -10,13 +10,15 @@
 //! `residents.rs` the way this is modelled on `admission`.
 
 use crate::queue::Wait;
+use std::env;
 use std::ffi::OsString;
 use std::time::{Duration, Instant};
 
+use crate::access::Access;
 use crate::admission::{Budget, Loaded};
 use crate::catalog::Residency;
 use crate::launch::Failure;
-use crate::proxy::Access;
+use crate::voice::Voice;
 
 /// Where the idle window is configured, mirroring `MAESTRO_MEMORY_BUDGET_MIB`.
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";
@@ -42,6 +44,7 @@ const CONNECTIONS: usize = 256;
 /// long unused memory may be held, who may ask -- and are read from the
 /// environment independently. They travel together only because `bind`'s
 /// argument count has nowhere left to grow.
+#[derive(Debug)]
 pub struct Limits {
     pub(crate) budget: Budget,
     pub(crate) idle_window: IdleWindow,
@@ -49,6 +52,7 @@ pub struct Limits {
     pub(crate) access: Access,
     pub(crate) stall: Duration,
     pub(crate) connections: usize,
+    pub(crate) voice: Voice,
 }
 
 impl Limits {
@@ -62,6 +66,7 @@ impl Limits {
             access: Access::default(),
             stall: STALL,
             connections: CONNECTIONS,
+            voice: Voice::default(),
         }
     }
 
@@ -89,6 +94,13 @@ impl Limits {
             ..self
         }
     }
+
+    /// The same limits, with where the router's lines for its operator go;
+    /// nowhere unless this is given.
+    #[must_use]
+    pub fn with_voice(self, voice: Voice) -> Self {
+        Self { voice, ..self }
+    }
 }
 
 /// How long a loaded on-demand model may go unused before it is unloaded.
@@ -97,6 +109,7 @@ impl Limits {
 /// both mean. Zero gets that meaning on purpose -- an operator writing "off"
 /// into a variable that is already in a script must not get permanent thrash
 /// from a window that expires everything on every sweep.
+#[derive(Debug)]
 pub struct IdleWindow(Option<Duration>);
 
 impl IdleWindow {
@@ -170,7 +183,7 @@ impl IdleWindow {
     /// a whole number of seconds. A window someone set and mistyped must not
     /// silently become no window at all.
     pub fn configured() -> Result<Self, Failure> {
-        Self::from_variable(std::env::var_os(VARIABLE))
+        Self::from_variable(env::var_os(VARIABLE))
     }
 
     /// The window a value of the variable describes, read as
@@ -221,9 +234,9 @@ mod tests {
     }
 
     /// Both protection rules have one shape, mirroring
-    /// `admission::tests::with_one_protected`: a protected entry, well past
-    /// the window, held beside an on-demand one of the same age that is not
-    /// protected. The rules differ only in what makes an entry protected, so
+    /// `admission::decision::tests::with_one_protected`: a protected entry,
+    /// well past the window, held beside an on-demand one of the same age that
+    /// is not protected. The rules differ only in what makes an entry protected, so
     /// only that field is a parameter.
     fn with_one_protected(protected: Loaded) -> Vec<String> {
         let window = IdleWindow::new(Duration::from_secs(60));

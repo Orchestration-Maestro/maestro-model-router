@@ -7,7 +7,6 @@
 //! began and what it was expected to cost, and that it finished and what it
 //! turned out to cost.
 
-use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,17 +16,7 @@ use crate::launch::{Failure, Server};
 use crate::memory::Measurement;
 
 use super::super::loaded::Loaded;
-use super::Slots;
-
-/// Writes one line for the operator.
-///
-/// Written rather than printed, with the error dropped: a closed standard
-/// output is not a reason to stop serving, and `println!` panics on one --
-/// which would end whichever thread said the line, and a reaper thread that
-/// ends is idle unloading that silently stops.
-pub(in crate::proxy) fn say(line: &str) {
-    drop(writeln!(std::io::stdout(), "{line}"));
-}
+use super::table::Slots;
 
 impl Slots {
     /// Starts a child for this entry, and measures it once it is ready.
@@ -45,7 +34,7 @@ impl Slots {
         server: &Server,
         root: &Path,
     ) -> Result<Loaded, Failure> {
-        say(&format!(
+        self.voice.say(&format!(
             "{}: loading, estimated at {} MiB",
             entry.id, entry.memory_estimate_mib
         ));
@@ -54,7 +43,8 @@ impl Slots {
         let child = match server.start(entry, root) {
             Ok(child) => child,
             Err(failure) => {
-                say(&format!("{}: not loaded: {failure}", entry.id));
+                self.voice
+                    .say(&format!("{}: not loaded: {failure}", entry.id));
                 return Err(failure);
             }
         };
@@ -63,7 +53,7 @@ impl Slots {
             free_before,
             self.budget.probe().device().map(|device| device.free_mib()),
         );
-        say(&ready(entry, started.elapsed(), &measured));
+        self.voice.say(&ready(entry, started.elapsed(), &measured));
         Ok(Loaded {
             child: Arc::new(child),
             last_used: Instant::now(),
@@ -151,6 +141,45 @@ mod tests {
             runtime: None,
             flags: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn a_load_that_fails_is_said_through_the_voice_the_router_was_given() {
+        use std::env;
+        use std::sync::mpsc;
+
+        use crate::admission::Budget;
+        use crate::catalog::Catalog;
+        use crate::queue::Wait;
+        use crate::voice::Voice;
+
+        let (heard, lines) = mpsc::channel();
+        let voice = Voice::new(move |line| drop(heard.send(line.to_owned())), |_| {});
+        let slots = Slots::new(
+            &Catalog::parse("version = 1\n[models]\n").expect("a catalog of no entries"),
+            Budget::new(None),
+            Wait::new(Duration::ZERO),
+            voice,
+        );
+        // The model file is not under the root, so nothing is ever spawned:
+        // the binary only has to exist.
+        let server = Server::located(Some(
+            &env::current_exe().expect("this test binary's own path"),
+        ))
+        .expect("this test binary's own path is a file");
+
+        let Err(failure) = slots.start(&entry(), &server, Path::new("/somewhere")) else {
+            panic!("a model file that is not there does not load");
+        };
+        drop(slots);
+
+        assert_eq!(
+            lines.iter().collect::<Vec<_>>(),
+            [
+                "qwen3-06b: loading, estimated at 1024 MiB".to_owned(),
+                format!("qwen3-06b: not loaded: {failure}"),
+            ]
+        );
     }
 
     #[test]

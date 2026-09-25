@@ -15,6 +15,7 @@
 //! back through the same code the catalog derives from. `build` is here
 //! because the binary prints it and `/props` reports it.
 
+mod access;
 pub mod admission;
 pub mod bench;
 pub mod build;
@@ -26,3 +27,4 @@ pub mod memory;
 pub mod proxy;
 pub mod queue;
 pub mod startup;
+mod voice;

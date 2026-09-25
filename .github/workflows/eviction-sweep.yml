@@ -30,4 +30,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Run every eviction case
-        run: cargo test --locked --test eviction
+        run: "cargo test --locked --test it eviction_policy::"

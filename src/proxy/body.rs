@@ -149,7 +149,10 @@ mod tests {
                 "a scan for the word would have found the one in the conversation",
             ),
             (
-                r#"{"messages":[{"role":"user","content":"say \"model\": \"gemma3\""}],"model":"qwen38"}"#,
+                concat!(
+                    r#"{"messages":[{"role":"user","content":"say \"model\": \"gemma3\""}],"#,
+                    r#""model":"qwen38"}"#
+                ),
                 "a scan that did not track escapes would have found the escaped one",
             ),
             (

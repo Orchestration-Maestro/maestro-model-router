@@ -1,7 +1,7 @@
 //! Which addresses this router answers on, and who accepts on each.
 //!
 //! Split from the module beside it when `proxy` reached the module-size gate,
-//! along the seam the gate exposed: `proxy` carries the type a caller holds,
+//! along the seam the gate exposed: `router` carries the type a caller holds,
 //! and this carries the ports that exist and the threads that accept on them.
 //!
 //! More than one address is the point of this module. A router reached over a
@@ -22,11 +22,13 @@
 
 use std::io::{ErrorKind, Write};
 use std::net::{SocketAddr, TcpListener};
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::{Shared, answer};
+use super::answer;
+use super::permits::Permits;
+use super::shared::Shared;
 use crate::launch::Failure;
 
 /// How long `serve` waits at startup for an address no interface holds yet.
@@ -78,12 +80,15 @@ pub fn await_assigned(addresses: &[SocketAddr], within: Duration, notices: &mut 
 /// wildcard, or when one of them cannot be bound.
 pub(super) fn reserve(addresses: &[SocketAddr]) -> Result<Vec<TcpListener>, Failure> {
     if addresses.is_empty() {
-        return Err(Failure::Unavailable(
-            "refusing to serve: no address to listen on was given".to_owned(),
-        ));
+        return Err(nothing_given());
     }
 
     addresses.iter().map(one).collect()
+}
+
+/// The refusal for a router asked to listen on nothing.
+fn nothing_given() -> Failure {
+    Failure::Unavailable("refusing to serve: no address to listen on was given".to_owned())
 }
 
 /// Reserves one address, refusing a wildcard before the kernel is asked.
@@ -100,25 +105,32 @@ fn one(address: &SocketAddr) -> Result<TcpListener, Failure> {
         .map_err(|error| Failure::Unavailable(format!("cannot bind {address}: {error}")))
 }
 
-/// Where every listener ended up, in the order they were reserved.
+/// Where every listener ended up, in the order they were reserved, and the
+/// first of them.
 ///
 /// What was asked for and what was bound are not the same thing: an address
 /// carrying port zero is a request for whichever port is free, and only the
 /// listener knows which one that turned out to be.
 ///
-/// # Panics
+/// # Errors
 ///
-/// If a listener has no address, which cannot happen: every listener here was
-/// returned by a bind that succeeded.
-pub(super) fn addresses(listeners: &[TcpListener]) -> Vec<SocketAddr> {
-    listeners
+/// Returns a [`Failure`] when there is no listener, or when one has no
+/// address. Neither happens -- [`reserve`] refuses an empty list, and every
+/// listener it returns came from a bind that succeeded -- but read here, once,
+/// either is a refusal to serve rather than a panic in whoever asks later.
+pub(super) fn assigned(
+    listeners: &[TcpListener],
+) -> Result<(SocketAddr, Vec<SocketAddr>), Failure> {
+    let addresses = listeners
         .iter()
         .map(|listener| {
-            listener
-                .local_addr()
-                .expect("a bound listener has an address")
+            listener.local_addr().map_err(|error| {
+                Failure::Unavailable(format!("cannot read the address bound: {error}"))
+            })
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    let first = addresses.first().copied().ok_or_else(nothing_given)?;
+    Ok((first, addresses))
 }
 
 /// Accepts on every listener until the process ends.
@@ -162,39 +174,6 @@ fn on(listener: &TcpListener, shared: &Arc<Shared>) {
             // business. The next connection is what matters.
             drop(answer::to(&shared, &stream));
         });
-    }
-}
-
-/// How many connections may be answered at once, shared by every listener.
-pub(super) struct Permits {
-    free: Mutex<usize>,
-    freed: Condvar,
-}
-
-impl Permits {
-    /// This many, and never none: a router that could accept nothing would
-    /// be bound and silent, which is worse than either.
-    pub(super) fn new(count: usize) -> Self {
-        Self {
-            free: Mutex::new(count.max(1)),
-            freed: Condvar::new(),
-        }
-    }
-
-    /// Waits until a connection may be answered, and takes that turn.
-    fn take(&self) {
-        let free = self.free.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut free = self
-            .freed
-            .wait_while(free, |free| *free == 0)
-            .unwrap_or_else(PoisonError::into_inner);
-        *free -= 1;
-    }
-
-    /// Gives a turn back, waking an accept that is waiting for one.
-    fn give(&self) {
-        *self.free.lock().unwrap_or_else(PoisonError::into_inner) += 1;
-        self.freed.notify_one();
     }
 }
 

@@ -1,7 +1,7 @@
 //! What a file's name says: whether it is a model on its own, and what the
 //! entry it becomes is called.
 //!
-//! Split from the module above it along the seam the size gate exposed: that
+//! Split from `walk.rs` beside it along the seam the size gate exposed: that
 //! module walks the root and builds entries, and this decides two things
 //! about one name without touching the file behind it.
 
@@ -24,7 +24,7 @@ pub(super) fn is_model(name: &str) -> bool {
         return false;
     }
     if lower
-        .split(|c: char| !c.is_ascii_alphanumeric())
+        .split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| segment.ends_with("mtp"))
     {
         return false;
@@ -76,9 +76,9 @@ pub(super) fn identifier(
 /// Lowercase letters and digits, with every other run collapsed to a hyphen.
 fn sanitised(text: &str) -> String {
     let mut out = String::new();
-    for c in text.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() {
+            out.push(character.to_ascii_lowercase());
         } else if !out.ends_with('-') {
             out.push('-');
         }
@@ -109,6 +109,19 @@ mod tests {
             "a draft, named differently"
         );
         assert!(!is_model("README.md"));
+    }
+
+    #[test]
+    fn a_name_with_no_way_to_tell_it_apart_is_skipped_with_a_note() {
+        let mut taken = BTreeSet::from(["x".to_owned(), "b-x".to_owned()]);
+        let mut notes = Vec::new();
+
+        let beside = identifier(Path::new("/somewhere/b/x.gguf"), &mut taken, &mut notes);
+        let bare = identifier(Path::new("x.gguf"), &mut taken, &mut notes);
+
+        assert_eq!(beside, None, "its directory's name is taken as well");
+        assert_eq!(bare, None, "it has no directory to be told apart by");
+        assert_eq!(notes.len(), 2, "each skip is said: {notes:?}");
     }
 
     #[test]
