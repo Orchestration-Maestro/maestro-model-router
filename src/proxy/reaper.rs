@@ -11,7 +11,6 @@ use std::sync::Weak;
 use std::time::{Duration, Instant};
 
 use super::shared::Shared;
-use super::slots::say;
 
 /// Where the reaper's stop signal was defined before it moved beside the
 /// `Shared` that holds it, which kept this module and that one from naming
@@ -69,13 +68,13 @@ pub(super) fn run(shared: &Weak<Shared>) {
         // this tick decides.
         let catalog = strong.catalog();
         for (id, status) in strong.slots.sweep_exited(&catalog) {
-            say(&format!(
+            strong.voice.say(&format!(
                 "{id} exited on its own ({status}); its slot was emptied, and the \
                  next request for it starts it again"
             ));
         }
         for id in strong.slots.sweep_idle(&catalog, &strong.idle_window) {
-            say(&format!(
+            strong.voice.say(&format!(
                 "{id} unloaded after sitting idle past its configured window"
             ));
         }
@@ -152,6 +151,7 @@ mod tests {
         use crate::catalog::Catalog;
         use crate::idle::IdleWindow;
         use crate::launch::Server;
+        use crate::voice::Voice;
         use std::env;
         use std::path::PathBuf;
         use std::sync::{Mutex, RwLock};
@@ -173,7 +173,12 @@ mod tests {
             &env::current_exe().expect("this test binary's own path"),
         ))
         .expect("this test binary's own path is a file");
-        let slots = Slots::new(&catalog, Budget::new(None), Wait::new(Duration::ZERO));
+        let slots = Slots::new(
+            &catalog,
+            Budget::new(None),
+            Wait::new(Duration::ZERO),
+            Voice::default(),
+        );
 
         let shared = Arc::new(Shared {
             catalog: RwLock::new(Arc::new(catalog)),
@@ -188,6 +193,7 @@ mod tests {
             stall: Duration::from_secs(60),
             permits: Permits::new(1),
             stop: Stop::new(),
+            voice: Voice::default(),
         });
 
         let weak = Arc::downgrade(&shared);

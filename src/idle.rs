@@ -18,6 +18,7 @@ use crate::access::Access;
 use crate::admission::{Budget, Loaded};
 use crate::catalog::Residency;
 use crate::launch::Failure;
+use crate::voice::Voice;
 
 /// Where the idle window is configured, mirroring `MAESTRO_MEMORY_BUDGET_MIB`.
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";
@@ -51,6 +52,7 @@ pub struct Limits {
     pub(crate) access: Access,
     pub(crate) stall: Duration,
     pub(crate) connections: usize,
+    pub(crate) voice: Voice,
 }
 
 impl Limits {
@@ -64,6 +66,7 @@ impl Limits {
             access: Access::default(),
             stall: STALL,
             connections: CONNECTIONS,
+            voice: Voice::default(),
         }
     }
 
@@ -90,6 +93,13 @@ impl Limits {
             connections,
             ..self
         }
+    }
+
+    /// The same limits, with where the router's lines for its operator go;
+    /// nowhere unless this is given.
+    #[must_use]
+    pub fn with_voice(self, voice: Voice) -> Self {
+        Self { voice, ..self }
     }
 }
 

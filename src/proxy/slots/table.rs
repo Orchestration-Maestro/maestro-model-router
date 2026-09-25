@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use crate::admission::Budget;
 use crate::catalog::Catalog;
 use crate::queue::Wait;
+use crate::voice::Voice;
 
 use super::super::loaded::Slot;
 use super::lease::Freed;
@@ -53,11 +54,18 @@ pub(in super::super) struct Slots {
     pub(super) in_line: AtomicUsize,
     pub(super) budget: Budget,
     pub(super) wait: Wait,
+    /// Where a load, and an unload to make room, is said.
+    pub(super) voice: Voice,
 }
 
 impl Slots {
     /// One slot per entry the catalog carries, all of them empty.
-    pub(in super::super) fn new(catalog: &Catalog, budget: Budget, wait: Wait) -> Self {
+    pub(in super::super) fn new(
+        catalog: &Catalog,
+        budget: Budget,
+        wait: Wait,
+        voice: Voice,
+    ) -> Self {
         Self {
             by_id: RwLock::new(
                 catalog
@@ -71,6 +79,7 @@ impl Slots {
             in_line: AtomicUsize::new(0),
             budget,
             wait,
+            voice,
         }
     }
 
@@ -185,6 +194,7 @@ mod tests {
             &catalog(&["gemma3"]),
             Budget::new(None),
             Wait::new(Duration::ZERO),
+            Voice::default(),
         )
     }
 

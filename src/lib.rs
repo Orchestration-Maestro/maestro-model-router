@@ -27,3 +27,4 @@ pub mod memory;
 pub mod proxy;
 pub mod queue;
 pub mod startup;
+mod voice;

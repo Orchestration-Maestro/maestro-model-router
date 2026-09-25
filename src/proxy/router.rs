@@ -55,7 +55,7 @@ impl Router {
         let (address, addresses) = listen::assigned(&listeners)?;
 
         let Source { catalog, path } = catalog;
-        let slots = Slots::new(&catalog, limits.budget, limits.wait);
+        let slots = Slots::new(&catalog, limits.budget, limits.wait, limits.voice.clone());
 
         Ok(Self {
             listeners,
@@ -73,6 +73,7 @@ impl Router {
                 stall: limits.stall,
                 permits: Permits::new(limits.connections),
                 stop: Stop::new(),
+                voice: limits.voice,
             }),
         })
     }

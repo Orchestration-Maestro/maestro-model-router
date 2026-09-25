@@ -24,6 +24,7 @@ use crate::access::Access;
 use crate::catalog::{Catalog, Entry};
 use crate::idle::IdleWindow;
 use crate::launch::{Failure, Server};
+use crate::voice::Voice;
 
 /// A catalog and the file it was read from.
 ///
@@ -74,6 +75,8 @@ pub(super) struct Shared {
     /// [`Stop`] for why a `Weak<Shared>` alone is not enough: the
     /// test harness never drops a `Router`, so nothing would ever end it.
     pub(super) stop: Stop,
+    /// Where the startup loader and the reaper say what they did.
+    pub(super) voice: Voice,
 }
 
 /// Wakes the reaper the moment [`super::Router::stop`] is called, rather than

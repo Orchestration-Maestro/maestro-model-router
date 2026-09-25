@@ -24,5 +24,4 @@ mod table;
 mod view;
 
 pub(in crate::proxy) use lease::Lease;
-pub(in crate::proxy) use start::say;
 pub(super) use table::Slots;

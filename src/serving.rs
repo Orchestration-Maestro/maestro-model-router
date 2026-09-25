@@ -1,7 +1,7 @@
 //! The `serve` command: every entry in a catalog, served until the process is
 //! asked to end, and the children ended with it.
 
-use std::io;
+use std::io::{self, Write as _};
 use std::net::SocketAddr;
 use std::panic;
 use std::path::Path;
@@ -13,7 +13,7 @@ use maestro_model_router::admission::Budget;
 use maestro_model_router::build;
 use maestro_model_router::idle::{IdleWindow, Limits};
 use maestro_model_router::launch::{Server, models_root};
-use maestro_model_router::proxy::{self, ASSIGNED_WITHIN, Access, Router, Source};
+use maestro_model_router::proxy::{self, ASSIGNED_WITHIN, Access, Router, Source, Voice};
 use maestro_model_router::queue::Wait;
 use maestro_model_router::startup;
 
@@ -51,7 +51,9 @@ pub(crate) fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String>
     let waiting = wait.waits();
     let access = Access::configured();
     let access_rules = access.described();
-    let limits = Limits::new(budget, idle_window, wait).with_access(access);
+    let limits = Limits::new(budget, idle_window, wait)
+        .with_access(access)
+        .with_voice(to_stdout_and_stderr());
     // The path travels with what was parsed from it: `POST /reload` reads the
     // same file again, and a router handed only the parsed value would have
     // nowhere to read it from.
@@ -84,6 +86,21 @@ pub(crate) fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String>
     println!("{}", build::described());
 
     until_ended(&router)
+}
+
+/// The router's lines for its operator, on this process's own streams: what
+/// it did on standard output, a resident that would not load on standard
+/// error.
+///
+/// Written rather than printed, with the error dropped: a closed standard
+/// output is not a reason to stop serving, and `println!` panics on one --
+/// which would end whichever thread said the line, and a reaper thread that
+/// ends is idle unloading that silently stops.
+fn to_stdout_and_stderr() -> Voice {
+    Voice::new(
+        |line| drop(writeln!(io::stdout(), "{line}")),
+        |line| drop(writeln!(io::stderr(), "{line}")),
+    )
 }
 
 /// Every address one operand names, separated by commas.

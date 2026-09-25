@@ -28,7 +28,6 @@ use crate::launch::{Failure, Server};
 
 use super::lease::Lease;
 use super::queue::Queue;
-use super::start::say;
 use super::table::Slots;
 
 /// What one look at the room came to.
@@ -129,7 +128,7 @@ impl Slots {
                 entry.id
             ))),
             Decision::Unload(ids) => {
-                say(&format!(
+                self.voice.say(&format!(
                     "{}: unloading {} to make room",
                     entry.id,
                     ids.join(", ")

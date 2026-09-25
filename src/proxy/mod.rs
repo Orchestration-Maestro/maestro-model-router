@@ -74,6 +74,7 @@ mod shared;
 mod slots;
 
 pub use crate::access::Access;
+pub use crate::voice::Voice;
 pub use listen::{ASSIGNED_WITHIN, await_assigned};
 pub use router::Router;
 pub use shared::Source;

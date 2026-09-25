@@ -7,14 +7,12 @@
 //! It reaches children through the same path a request does. That is the whole
 //! of its concurrency argument -- there is none of its own.
 
-use std::io::{self, Write as _};
 use std::sync::PoisonError;
 use std::time::Instant;
 
 use crate::catalog::Residency;
 
 use super::shared::Shared;
-use super::slots::say;
 
 /// Loads every resident entry, reporting and recording what failed.
 ///
@@ -31,9 +29,9 @@ use super::slots::say;
 ///
 /// Each outcome is said because a cold load's cost has no other way to reach
 /// the operator, and each failure is recorded as well because this runs on a
-/// thread whose output belongs to nobody's call. Written the way [`say`]
-/// writes, with the error dropped, and for its reason: a closed output is not
-/// a reason to end the thread that loads the rest.
+/// thread whose output belongs to nobody's call. Both are said through the
+/// router's [`Voice`](crate::proxy::Voice), a failure on its complaining side,
+/// and where that goes is the binary's choice.
 pub(super) fn load(shared: &Shared) {
     let catalog = shared.catalog();
     for entry in catalog
@@ -43,17 +41,17 @@ pub(super) fn load(shared: &Shared) {
     {
         let started = Instant::now();
         match shared.child(entry) {
-            Ok(_) => say(&format!(
+            Ok(_) => shared.voice.say(&format!(
                 "resident {} loaded in {:.1} seconds",
                 entry.id,
                 started.elapsed().as_secs_f64()
             )),
             Err(failure) => {
                 let reported = format!("{}: {failure}", entry.id);
-                drop(writeln!(
-                    io::stderr(),
-                    "resident {reported}\n  serving the rest of the catalog without it"
-                ));
+                shared.voice.complain(&format!("resident {reported}"));
+                shared
+                    .voice
+                    .complain("  serving the rest of the catalog without it");
                 shared
                     .resident_failures
                     .lock()
