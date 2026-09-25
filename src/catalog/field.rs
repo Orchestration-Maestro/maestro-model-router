@@ -14,7 +14,8 @@ use std::collections::BTreeMap;
 
 use toml::{Table, Value};
 
-use super::{RelativePath, Residency};
+use super::entry::Residency;
+use super::path::RelativePath;
 
 /// One problem, phrased the same way every time.
 pub(super) fn problem(scope: &str, field: &str, complaint: &str) -> String {
@@ -99,7 +100,7 @@ pub(super) fn as_positive(value: &Value) -> Result<u32, String> {
         return Err("must be a whole number".to_owned());
     };
     match u32::try_from(number) {
-        Ok(n) if n > 0 => Ok(n),
+        Ok(positive) if positive > 0 => Ok(positive),
         _ => Err(format!("must be greater than zero, but is {number}")),
     }
 }
@@ -126,7 +127,7 @@ pub(super) fn as_runtime(value: &Value) -> Result<String, String> {
     let usable = !text.is_empty()
         && text
             .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            .all(|letter| letter.is_ascii_lowercase() || letter.is_ascii_digit() || letter == '-');
     if usable {
         Ok(text)
     } else {

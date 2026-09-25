@@ -13,7 +13,7 @@
 //! they read alike today is that llama.cpp happens to spell both with one
 //! switch.
 
-use super::Entry;
+use super::entry::Entry;
 
 impl Entry {
     /// Whether this entry answers with generated text.
@@ -52,7 +52,8 @@ impl Entry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{RelativePath, Residency};
+    use crate::catalog::entry::Residency;
+    use crate::catalog::path::RelativePath;
     use std::collections::BTreeMap;
 
     fn entry(flags: &[(&str, &str)], projector: bool) -> Entry {
@@ -71,7 +72,7 @@ mod tests {
             runtime: None,
             flags: flags
                 .iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
                 .collect::<BTreeMap<_, _>>(),
         }
     }

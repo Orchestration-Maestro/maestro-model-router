@@ -15,18 +15,11 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use super::entry::Entry;
 use super::field::problem;
-use super::read;
-use super::{Catalog, Entry, Report, discover, estimate};
-
-/// Where an entry's memory estimate came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EstimateSource {
-    /// Written in the catalog, by the entry or by the defaults table.
-    Declared,
-    /// Worked out from the entry's files, because nothing declared it.
-    Derived,
-}
+use super::listing::Catalog;
+use super::report::Report;
+use super::{discover, estimate, read};
 
 /// A catalog read against a models root, and what there is to say about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,7 +103,7 @@ impl Catalog {
         let discovered: BTreeSet<String> = found.iter().map(|entry| entry.id.clone()).collect();
         ledger.derived.extend(discovered.iter().cloned());
         entries.extend(found);
-        entries.sort_by(|a, b| a.id.cmp(&b.id));
+        entries.sort_by(|first, second| first.id.cmp(&second.id));
 
         Ok(Reading {
             catalog: Self {

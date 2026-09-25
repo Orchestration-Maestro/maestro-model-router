@@ -18,7 +18,7 @@ use maestro_model_router::launch::models_root;
 ///
 /// Every problem is printed, not the first, so one run of this command covers
 /// one round of edits to the file.
-pub fn check(catalog: &Path) -> ExitCode {
+pub(crate) fn check(catalog: &Path) -> ExitCode {
     let text = match fs::read_to_string(catalog) {
         Ok(text) => text,
         Err(error) => {

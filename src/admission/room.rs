@@ -1,13 +1,13 @@
 //! What there is to fit into, and the words for when there is not.
 //!
 //! Split from the decision beside it when `admission.rs` grew past the
-//! module-size gate, along the seam the two questions left: `admission`
+//! module-size gate, along the seam the two questions left: `decision`
 //! chooses candidates coldest first, and this says whether what they would
 //! free is enough -- on the ledger, on the device, or on neither.
 
 use crate::catalog::Residency;
 
-use super::{Loaded, Wanted};
+use super::subject::{Loaded, Wanted};
 
 /// What there is to fit into, on both sides, in mebibytes.
 pub(super) struct Room {

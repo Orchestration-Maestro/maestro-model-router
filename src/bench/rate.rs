@@ -19,8 +19,8 @@
 //! knowing which kind of entry produced the row, and cannot print a passage
 //! rate under a heading that says tokens.
 
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::io::{self, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 use std::collections::BTreeMap;
@@ -113,7 +113,7 @@ enum Answers {
 ///
 /// Returns `None` rather than an error: a rate that could not be read is worth
 /// less than the memory reading beside it, and losing both would be worse.
-pub(super) fn of(endpoint: std::net::SocketAddr, model: &Entry) -> Option<Throughput> {
+pub(super) fn of(endpoint: SocketAddr, model: &Entry) -> Option<Throughput> {
     match answers(&model.flags) {
         Answers::Completions => generated(endpoint, &model.id),
         Answers::Embeddings => scored(endpoint, "/v1/embeddings", &embeddings(&model.id)),
@@ -122,7 +122,7 @@ pub(super) fn of(endpoint: std::net::SocketAddr, model: &Entry) -> Option<Throug
 }
 
 /// Asks the server to generate, and reads the rate it reports.
-fn generated(endpoint: std::net::SocketAddr, id: &str) -> Option<Throughput> {
+fn generated(endpoint: SocketAddr, id: &str) -> Option<Throughput> {
     let body = serde_json::json!({
         "model": id,
         "messages": [{ "role": "user", "content": PROMPT }],
@@ -147,7 +147,7 @@ fn generated(endpoint: std::net::SocketAddr, id: &str) -> Option<Throughput> {
 ///
 /// The reply is parsed before the clock is read from, so that a server which
 /// answers an error quickly is not recorded as a fast one.
-fn scored(endpoint: std::net::SocketAddr, path: &str, body: &str) -> Option<Throughput> {
+fn scored(endpoint: SocketAddr, path: &str, body: &str) -> Option<Throughput> {
     let started = Instant::now();
     let reply = ask(endpoint, path, body).ok()?;
     let elapsed = started.elapsed();
@@ -180,7 +180,7 @@ fn reranking(id: &str) -> String {
 }
 
 /// One HTTP round trip, hand-written for the same reason the router's is.
-fn ask(endpoint: std::net::SocketAddr, path: &str, body: &str) -> std::io::Result<String> {
+fn ask(endpoint: SocketAddr, path: &str, body: &str) -> io::Result<String> {
     let mut stream = TcpStream::connect(endpoint)?;
     stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
 
@@ -216,7 +216,7 @@ mod tests {
     fn flags(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
             .iter()
-            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
             .collect()
     }
 

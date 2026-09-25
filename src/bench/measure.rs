@@ -1,35 +1,17 @@
-//! What an entry actually costs, and how fast it actually runs.
+//! Measuring one entry: start it, read it, stop it.
 //!
-//! A catalog's `memory_estimate_mib` is a claim. Until an entry has been
-//! loaded on a machine, that claim is arithmetic over file sizes and a guess
-//! at the context cache, and the two ways a guess goes wrong are not
-//! symmetric: too low and the card runs out part-way through loading, too high
-//! and the entry is refused while actually fitting. Neither failure says which
-//! it was.
-//!
-//! This loads one entry, asks the card what it took, asks the server how fast
-//! it generated, and stops it again. One at a time and never two: the number
-//! wanted is what a *single* entry costs, and co-residency would attribute one
-//! model's pages to another.
-//!
-//! It reports. It does not rewrite the catalog -- see the plan for why, but
-//! briefly: the shipped catalog's comments carry the reasoning for the numbers
-//! beside them, and a writer that preserved them is a TOML round-tripper.
-
-mod report;
-
-pub use report::command;
+//! Split from the door above it when `bench.rs` became `bench/mod.rs`, which
+//! may only declare. Why one entry at a time, and why nothing is written
+//! back, is said there.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-mod rate;
-
-pub use rate::Throughput;
-
 use crate::catalog::Entry;
 use crate::launch::{Failure, Server};
 use crate::memory::Probe;
+
+use super::rate::{self, Throughput};
 
 /// What one entry turned out to cost and do.
 #[derive(Debug, Clone)]
@@ -113,7 +95,7 @@ pub fn entry(server: &Server, model: &Entry, root: &Path) -> Result<Measurement,
         .measure(child.pid())
         .device_mib
         .or_else(|| {
-            let (before, after) = (before?, probe.device().map(|d| d.used_mib)?);
+            let (before, after) = (before?, probe.device().map(|device| device.used_mib)?);
             after.checked_sub(before).filter(|grown| *grown > 0)
         })
         .and_then(|mib| u32::try_from(mib).ok());
