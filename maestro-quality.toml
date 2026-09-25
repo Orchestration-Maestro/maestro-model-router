@@ -6,6 +6,11 @@
 [ci]
 platforms = "macos windows"
 
+# FO, the output-format switch of Windows' tasklist, which the memory probe
+# runs as `tasklist /FI ... /FO CSV /NH`.
+[typos]
+words = ["FO"]
+
 # ARC-005 finds an item that serves one caller. These stay seams, each for
 # the reason it gives.
 
