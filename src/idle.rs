@@ -10,6 +10,7 @@
 //! `residents.rs` the way this is modelled on `admission`.
 
 use crate::queue::Wait;
+use std::env;
 use std::ffi::OsString;
 use std::time::{Duration, Instant};
 
@@ -42,6 +43,7 @@ const CONNECTIONS: usize = 256;
 /// long unused memory may be held, who may ask -- and are read from the
 /// environment independently. They travel together only because `bind`'s
 /// argument count has nowhere left to grow.
+#[derive(Debug)]
 pub struct Limits {
     pub(crate) budget: Budget,
     pub(crate) idle_window: IdleWindow,
@@ -97,6 +99,7 @@ impl Limits {
 /// both mean. Zero gets that meaning on purpose -- an operator writing "off"
 /// into a variable that is already in a script must not get permanent thrash
 /// from a window that expires everything on every sweep.
+#[derive(Debug)]
 pub struct IdleWindow(Option<Duration>);
 
 impl IdleWindow {
@@ -170,7 +173,7 @@ impl IdleWindow {
     /// a whole number of seconds. A window someone set and mistyped must not
     /// silently become no window at all.
     pub fn configured() -> Result<Self, Failure> {
-        Self::from_variable(std::env::var_os(VARIABLE))
+        Self::from_variable(env::var_os(VARIABLE))
     }
 
     /// The window a value of the variable describes, read as

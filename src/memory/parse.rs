@@ -9,7 +9,7 @@
 //! that reports "unknown", never a wrong number, because a wrong number here
 //! becomes a decision to start a model there is no room for.
 
-use super::DeviceMemory;
+use super::figures::DeviceMemory;
 
 /// One mebibyte in kibibytes, the unit `ps` and `/proc/meminfo` speak.
 pub(super) const KIB_PER_MIB: u64 = 1024;

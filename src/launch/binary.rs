@@ -9,27 +9,69 @@
 //! that could not start -- the worst of both, since the check is what buys the
 //! confidence.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use super::failure::Failure;
+use super::search::on_search_path;
+use crate::catalog::Entry;
 
 /// What the server is called. Located on the search path, never bundled.
-pub(super) const BINARY_NAME: &str = "llama-server";
+const BINARY_NAME: &str = "llama-server";
 
 /// What a named runtime is called on disk.
-pub(crate) fn runtime_named(runtime: &str) -> String {
+fn runtime_named(runtime: &str) -> String {
     format!("{BINARY_NAME}-{runtime}")
 }
 
 /// Where a named runtime resolves to, if anywhere.
-pub(crate) fn runtime_binary(runtime: &str) -> Option<PathBuf> {
+fn runtime_binary(runtime: &str) -> Option<PathBuf> {
     on_search_path(&runtime_named(runtime))
 }
 
-/// The first match for a name on the search path, with the platform's
-/// executable suffix, so the Windows leg finds `llama-server.exe`.
-pub(crate) fn on_search_path(name: &str) -> Option<PathBuf> {
-    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
-    let search = std::env::var_os("PATH")?;
-    std::env::split_paths(&search)
-        .map(|directory| directory.join(&file))
-        .find(|candidate| candidate.is_file())
+/// The configured binary when there is one, otherwise the first
+/// `llama-server` on the search path; [`Server::located`](super::Server::located)
+/// says why each can fail.
+pub(super) fn located(configured: Option<&Path>) -> Result<PathBuf, Failure> {
+    if let Some(path) = configured {
+        return if path.is_file() {
+            Ok(path.to_path_buf())
+        } else {
+            Err(Failure::Unavailable(format!(
+                "the configured server binary is not there: '{}'",
+                path.display()
+            )))
+        };
+    }
+
+    on_search_path(BINARY_NAME).ok_or_else(|| {
+        Failure::Unavailable(format!(
+            "no server binary was configured, and no '{BINARY_NAME}' \
+             was found on the search path"
+        ))
+    })
+}
+
+/// The binary this entry is served from.
+///
+/// The one the router was started with, unless the entry names a runtime.
+/// A named one resolves on the search path as `llama-server-<name>`, which
+/// is how an operator points at a second build without the catalog
+/// carrying a path: the catalog says *which*, the machine says *where*.
+///
+/// Resolved per start rather than once, because one router serves entries
+/// that need different builds and a single binary chosen at startup cannot
+/// be right for both.
+pub(super) fn for_entry(started_with: &Path, entry: &Entry) -> Result<PathBuf, Failure> {
+    let Some(runtime) = entry.runtime.as_deref() else {
+        return Ok(started_with.to_path_buf());
+    };
+
+    runtime_binary(runtime).ok_or_else(|| {
+        Failure::Unavailable(format!(
+            "entry '{}' needs the '{runtime}' runtime, and nothing named \
+             '{}' is on the search path",
+            entry.id,
+            runtime_named(runtime)
+        ))
+    })
 }
