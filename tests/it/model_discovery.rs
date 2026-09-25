@@ -229,6 +229,24 @@ fn the_context_is_clamped_to_what_the_model_was_trained_for() {
 }
 
 #[test]
+fn a_file_claiming_no_trained_context_takes_the_defaults_unclamped() {
+    let scratch = Scratch::new("discovery-zero-context");
+    model().write(&scratch.path().join("a/Alpha-Model.gguf"), 4 * MIB);
+    Gguf::model("tiny", 4, 0, 256)
+        .with("tiny.attention.head_count", Value::U32(4))
+        .with("tiny.attention.head_count_kv", Value::U32(2))
+        .write(&scratch.path().join("z/Zero.gguf"), 4 * MIB);
+
+    let reading = read(&scratch);
+
+    assert_eq!(
+        reading.catalog.entry("zero").expect("found").context_size,
+        4096,
+        "a trained context of zero is no figure to clamp the defaults to"
+    );
+}
+
+#[test]
 fn a_root_with_nothing_to_find_reads_as_the_catalog_alone() {
     let scratch = Scratch::new("discovery-empty");
     model().write(&scratch.path().join("a/Alpha-Model.gguf"), 4 * MIB);
@@ -244,6 +262,26 @@ fn a_root_with_nothing_to_find_reads_as_the_catalog_alone() {
         0,
         "a root that is not there finds nothing, and the catalog's own entries \
          are refused at start rather than here, as they always were"
+    );
+}
+
+#[test]
+fn the_walk_reaches_sixteen_directories_down_and_no_further() {
+    let scratch = Scratch::new("discovery-depth");
+    model().write(&scratch.path().join("a/Alpha-Model.gguf"), 4 * MIB);
+    let deepest = (0..16).fold(scratch.path().to_path_buf(), |path, _| path.join("d"));
+    model().write(&deepest.join("reached.gguf"), 4 * MIB);
+    model().write(&deepest.join("d/beyond.gguf"), 4 * MIB);
+
+    let reading = read(&scratch);
+
+    assert!(
+        reading.catalog.is_discovered("reached"),
+        "sixteen down is walked"
+    );
+    assert!(
+        reading.catalog.entry("beyond").is_none(),
+        "seventeen down is not, which is what bounds a link to an ancestor"
     );
 }
 

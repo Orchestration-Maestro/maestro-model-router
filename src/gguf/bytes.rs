@@ -104,3 +104,52 @@ pub(super) fn skip(reader: &mut Reader, bytes: u64) -> Result<(), Fault> {
     reader.seek_relative(offset)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A value's little-endian bytes, padded to the eight a scalar is read into.
+    fn padded(bytes: &[u8]) -> [u8; 8] {
+        let mut out = [0u8; 8];
+        out.iter_mut()
+            .zip(bytes)
+            .for_each(|(slot, byte)| *slot = *byte);
+        out
+    }
+
+    #[test]
+    fn a_flag_reads_as_one_or_nothing() {
+        assert_eq!(unsigned(7, padded(&[1])), Some(1));
+        assert_eq!(unsigned(7, padded(&[0])), Some(0));
+    }
+
+    #[test]
+    fn a_signed_integer_reads_when_it_is_not_negative() {
+        for (kind, positive, negative) in [
+            (
+                1,
+                padded(&100i8.to_le_bytes()),
+                padded(&(-1i8).to_le_bytes()),
+            ),
+            (
+                3,
+                padded(&100i16.to_le_bytes()),
+                padded(&(-1i16).to_le_bytes()),
+            ),
+            (
+                5,
+                padded(&100i32.to_le_bytes()),
+                padded(&(-1i32).to_le_bytes()),
+            ),
+            (
+                11,
+                padded(&100i64.to_le_bytes()),
+                padded(&(-1i64).to_le_bytes()),
+            ),
+        ] {
+            assert_eq!(unsigned(kind, positive), Some(100), "type {kind}");
+            assert_eq!(unsigned(kind, negative), None, "type {kind} below zero");
+        }
+    }
+}

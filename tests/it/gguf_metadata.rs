@@ -65,6 +65,19 @@ fn a_per_layer_setting_is_read_as_its_largest_value() {
 }
 
 #[test]
+fn an_architecture_name_as_long_as_the_limit_is_kept() {
+    // The longest string value the reader keeps.
+    let architecture = "a".repeat(256);
+    let scratch = Scratch::new("gguf-long-name");
+    let path = scratch.path().join("model.gguf");
+    Gguf::model(&architecture, 28, 40_960, 1024).write(&path, 0);
+
+    let metadata = Metadata::read(&path).expect("a well-formed file is read");
+
+    assert_eq!(metadata.architecture(), Some(architecture.as_str()));
+}
+
+#[test]
 fn an_array_that_is_not_per_layer_is_stepped_over_rather_than_kept() {
     let scratch = Scratch::new("gguf-other-array");
     let path = scratch.path().join("model.gguf");
@@ -174,6 +187,53 @@ fn a_file_cut_short_is_refused_rather_than_read_as_empty() {
     assert!(
         Metadata::read(&path).is_err(),
         "a file that ends inside a value is not a file that says nothing"
+    );
+}
+
+#[test]
+fn a_file_declaring_as_many_pairs_as_the_limit_is_read() {
+    // The most pairs the reader takes before calling a header corrupt.
+    const LIMIT: u32 = 1 << 16;
+    let scratch = Scratch::new("gguf-pair-limit");
+    let path = scratch.path().join("model.gguf");
+    (0..LIMIT)
+        .fold(Gguf::v3(), |file, index| {
+            file.with(&format!("some.key_{index}"), Value::U32(index))
+        })
+        .write(&path, 0);
+
+    let metadata = Metadata::read(&path).expect("the limit itself is not refused as corrupt");
+
+    assert_eq!(
+        metadata.number(&format!("some.key_{}", LIMIT - 1)),
+        Some(u64::from(LIMIT - 1))
+    );
+}
+
+#[test]
+fn an_array_of_arrays_is_refused_by_name() {
+    let scratch = Scratch::new("gguf-nested");
+    let path = scratch.path().join("model.gguf");
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"GGUF");
+    bytes.extend_from_slice(&3u32.to_le_bytes());
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes.extend_from_slice(&1u64.to_le_bytes());
+    // An array whose elements are themselves arrays.
+    bytes.extend_from_slice(&11u64.to_le_bytes());
+    bytes.extend_from_slice(b"some.nested");
+    bytes.extend_from_slice(&9u32.to_le_bytes());
+    bytes.extend_from_slice(&9u32.to_le_bytes());
+    bytes.extend_from_slice(&1u64.to_le_bytes());
+    fs::write(&path, &bytes).expect("write");
+
+    let fault = Metadata::read(&path)
+        .expect_err("the format has no arrays of arrays")
+        .to_string();
+
+    assert!(
+        fault.contains("'some.nested' nests arrays"),
+        "the refusal names the key and what is wrong with it:\n{fault}"
     );
 }
 
