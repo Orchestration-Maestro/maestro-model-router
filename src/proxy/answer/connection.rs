@@ -1,27 +1,20 @@
-//! Answering one connection.
+//! What one connection is answered with, decided from its head.
 //!
-//! Split from the module beside it when that file grew past the module-size
-//! gate, along the seam the gate exposed: `proxy` carries the type a caller
-//! holds, and this carries what one connection is answered with. What that
-//! answer looks like on the wire is `reply`'s business; this decides which
-//! answer a request has earned.
-//!
-//! Everything here happens before a byte of a child's response has been
-//! forwarded, which is what makes a status still possible. Once the relay
-//! starts, it does not come back here.
+//! The door beside this says why answering is its own module; this is the
+//! answering, from the head read off the socket to the relay that ends it.
 
-use std::io::BufReader;
+use std::io::{self, BufReader};
 use std::net::TcpStream;
 
-mod own;
-
-use super::endpoint::Endpoint;
-use super::head::{Head, Length};
-use super::refusal::{Cause, Refusal};
-use super::{Shared, body, head, metrics, relay, reply};
+use super::super::endpoint::Endpoint;
+use super::super::head::{self, Head, Length};
+use super::super::refusal::{Cause, Refusal};
+use super::super::shared::Shared;
+use super::super::{body, metrics, relay, reply};
+use super::own;
 
 /// Answers one connection.
-pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
+pub(in crate::proxy) fn to(shared: &Shared, stream: &TcpStream) -> io::Result<()> {
     // A caller that sends none of its request, or reads none of its answer,
     // for this long is given up on: the watch sees a caller leave, not one
     // that stays and does nothing. Set on the socket, so the clone the head
@@ -93,6 +86,17 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
         _ => {}
     }
 
+    to_model(shared, stream, &mut reader, &request)
+}
+
+/// Answers a request some model has to answer, once the router has settled
+/// that it is not one of its own.
+fn to_model(
+    shared: &Shared,
+    stream: &TcpStream,
+    reader: &mut BufReader<&TcpStream>,
+    request: &Head,
+) -> io::Result<()> {
     // Which model answers, and the body if reading it was what said so. The
     // dedicated endpoint names its model in the path and never looks, which
     // is why only one of these two arms buffers anything. The other is every
@@ -109,7 +113,7 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
         if request.expects_continue {
             reply::proceed(stream)?;
         }
-        match body::read(&mut reader, declared) {
+        match body::read(reader, declared) {
             Ok((bytes, model)) => (model, Some(bytes)),
             Err(refusal) => return reply::refuse(stream, &refusal),
         }
@@ -158,7 +162,7 @@ pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
     // scope while this runs, which is load-bearing: its `Arc` keeps the
     // slot's strong count at two or more, so no sweep can empty it between
     // the relay ending and the touch landing.
-    let outcome = relay::run(&request, &child, buffered.as_deref(), &mut reader, stream);
+    let outcome = relay::run(request, &child, buffered.as_deref(), reader, stream);
     shared.slots.touch(&entry.id);
     outcome
 }

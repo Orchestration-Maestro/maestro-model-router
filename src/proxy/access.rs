@@ -16,6 +16,7 @@
 //! is refused before anything else happens. A caller that is no browser names
 //! no origin and is unaffected.
 
+use std::env;
 use std::ffi::OsString;
 
 use super::head::Head;
@@ -38,7 +39,7 @@ impl Access {
     /// The rules this machine's environment sets.
     #[must_use]
     pub fn configured() -> Self {
-        Self::from_variables(std::env::var_os(KEY), std::env::var_os(ORIGINS))
+        Self::from_variables(env::var_os(KEY), env::var_os(ORIGINS))
     }
 
     /// The rules these values of the two variables describe.
@@ -99,7 +100,8 @@ impl Access {
                 return Err(Refusal::new(
                     Cause::Unauthorized,
                     format!(
-                        "this router requires a key: send 'Authorization: Bearer <key>' with the value of {KEY}"
+                        "this router requires a key: send 'Authorization: Bearer <key>' with \
+                         the value of {KEY}"
                     ),
                 ));
             }
@@ -124,7 +126,9 @@ fn same(carried: &str, key: &str) -> bool {
         && carried
             .bytes()
             .zip(key.bytes())
-            .fold(0u8, |difference, (a, b)| difference | (a ^ b))
+            .fold(0u8, |difference, (carried_byte, key_byte)| {
+                difference | (carried_byte ^ key_byte)
+            })
             == 0
 }
 
