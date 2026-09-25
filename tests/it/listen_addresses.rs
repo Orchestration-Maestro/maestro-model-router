@@ -145,8 +145,7 @@ fn a_wildcard_address_is_refused_because_it_names_no_interface() {
     let root = ModelsRoot::with(&[MODEL]);
 
     let refusal = bound(&["0.0.0.0:0".parse().expect("an address")], &root)
-        .err()
-        .expect("a wildcard is refused")
+        .expect_err("a wildcard is refused")
         .to_string();
 
     assert!(
@@ -248,8 +247,7 @@ fn a_router_with_no_address_is_refused_rather_than_bound_to_nothing() {
     let root = ModelsRoot::with(&[MODEL]);
 
     let refusal = bound(&[], &root)
-        .err()
-        .expect("nothing to listen on is not a router")
+        .expect_err("nothing to listen on is not a router")
         .to_string();
 
     assert!(
