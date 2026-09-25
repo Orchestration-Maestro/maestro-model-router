@@ -16,11 +16,6 @@ impl Slots {
         self.budget.limit_mib()
     }
 
-    /// The identifiers of the entries holding a child, in catalog order.
-    pub(in super::super) fn loaded_ids(&self, catalog: &Catalog) -> Vec<String> {
-        self.snapshot(catalog, |entry, _| entry.id.clone())
-    }
-
     /// Every occupied slot, seen through `project`, in catalog order.
     ///
     /// Each slot is locked in turn, so this is a snapshot of several moments

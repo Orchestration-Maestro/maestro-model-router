@@ -83,11 +83,11 @@ impl Router {
     /// Names rather than handles, deliberately. Without this, "the resident
     /// was loaded at startup" cannot be observed at all: any request that
     /// would reveal the child is also a request that would have started it.
-    /// Why it returns names is in `Slots::loaded_ids`, and it is the slot
+    /// Why it returns names is in `Slots::loaded`, and it is the slot
     /// invariant rather than a preference.
     #[must_use]
     pub fn loaded(&self) -> Vec<String> {
-        self.shared.slots.loaded_ids(&self.shared.catalog())
+        self.shared.slots.loaded(&self.shared.catalog())
     }
 
     /// How many requests are waiting in line for room right now.
