@@ -1,13 +1,13 @@
 # Security rules in `maestro-model-router`
 
 `maestro-model-router` follows the organization's [security
-rules](https://github.com/Orchestration-Maestro/.github/blob/main/golden-rules/security.md).
+rules](https://github.com/Orchestration-Maestro/.github/blob/864d85597a833864cd8506c3925830503b3c2163/golden-rules/security.md).
 This page is its rule map (C-001): for every rule, what holds it here, or why it
 does not apply. A row may name a stricter local rule; none weakens one.
 
-The organization's `scripts/golden-rules.py` writes the rows from the golden
-rules and keeps what each row says here. A rule added there arrives as "Not
-mapped yet", and the drift check fails until it is mapped.
+`rust-gate rules` writes the rows from the golden rules of `.github@864d855` at
+every commit and keeps what each row says here. A rule added there arrives as
+"Not mapped yet", and the daily drift check reports it until it is mapped.
 
 ## What this repository protects
 
