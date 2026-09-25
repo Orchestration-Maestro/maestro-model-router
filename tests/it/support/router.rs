@@ -14,7 +14,7 @@ use std::time::Duration;
 use maestro_model_router::admission::Budget;
 use maestro_model_router::catalog::Catalog;
 use maestro_model_router::idle::{IdleWindow, Limits};
-use maestro_model_router::launch::Server;
+use maestro_model_router::launch::{LineSink, Server};
 use maestro_model_router::memory::Probe;
 use maestro_model_router::proxy::{Access, Router, Source};
 use maestro_model_router::queue::Wait;
@@ -328,8 +328,11 @@ fn open_limits(limit_mib: Option<u32>) -> Limits {
 /// A router serving `catalog` from `root` within these limits.
 fn launched_with(catalog: &str, root: ModelsRoot, limits: Limits) -> Serving {
     let parsed = Catalog::parse(catalog).expect("a usable catalog");
-    let server =
-        Server::located(Some(&stub_binary())).expect("the stub binary is built by cargo test");
+    // Every line a child writes goes to this test's standard error, under the
+    // entry it came from, so a failing test shows what its children said.
+    let server = Server::located(Some(&stub_binary()))
+        .expect("the stub binary is built by cargo test")
+        .with_sink(LineSink::new(|id, line| eprintln!("{id}: {line}")));
     // Where a reload would read from. The helpers that parse a catalog out of
     // a string still name a path, because `bind` takes one: it is the file
     // `reloadable` wrote, or a name nothing put anything at -- in which case
