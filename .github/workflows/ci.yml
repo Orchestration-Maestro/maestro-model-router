@@ -15,7 +15,6 @@ jobs:
       contents: read
     with:
       platforms: macos windows
-      mutation-test: false
   # Clippy and secret-scan findings into the Security tab.
   sarif:
     needs: rust

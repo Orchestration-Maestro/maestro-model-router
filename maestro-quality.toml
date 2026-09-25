@@ -5,11 +5,6 @@
 # three; AGENTS.md says why the claim matters here.
 [ci]
 platforms = "macos windows"
-# Off for the one pull request that moves the repository to rust-workflows
-# v2.5.1: its diff touches nearly every file, and mutating all of it, 298
-# mutants, outlasts the 45-minute job. The same `--in-diff` run done locally
-# found 0 missed and 0 timed out. Turn it back on in the next pull request.
-mutation-test = false
 
 # FO, the output-format switch of Windows' tasklist, which the memory probe
 # runs as `tasklist /FI ... /FO CSV /NH`.
