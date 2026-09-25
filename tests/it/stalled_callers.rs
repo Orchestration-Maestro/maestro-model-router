@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
+use crate::support::poll::eventually;
 use crate::support::{
     MODEL, ModelsRoot, catalog_text, get, impatient, post, request, settled, status,
 };
@@ -74,18 +75,13 @@ fn a_caller_that_reads_nothing_of_its_answer_lets_the_model_go() {
         serving.loaded().contains(&"chatty".to_owned())
     });
 
-    let started = Instant::now();
     let mut reply = String::new();
-    while started.elapsed() < Duration::from_secs(10) {
+    let answered = eventually(Duration::from_secs(10), Duration::from_millis(100), || {
         reply = request(serving.address(), &get("/models/other/v1/echo"));
-        if status(&reply) == Some(200) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    assert_eq!(
-        status(&reply),
-        Some(200),
+        status(&reply) == Some(200)
+    });
+    assert!(
+        answered,
         "a caller that read nothing for the stall let its model go, so the \
          other could take the room:\n{reply}"
     );

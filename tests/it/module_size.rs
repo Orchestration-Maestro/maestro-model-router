@@ -25,10 +25,11 @@ const MAX_MODULE_LINES: usize = 250;
 fn code_lines(path: &Path) -> usize {
     let text = fs::read_to_string(path).expect("read");
     text.lines()
-        .position(|l| {
-            let l = l.trim_start();
-            l.starts_with("#[cfg(")
-                && l.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .position(|line| {
+            let line = line.trim_start();
+            line.starts_with("#[cfg(")
+                && line
+                    .split(|letter: char| !letter.is_alphanumeric() && letter != '_')
                     .any(|tok| tok == "test")
         })
         .unwrap_or_else(|| text.lines().count())
@@ -39,16 +40,16 @@ fn no_module_becomes_a_dumping_ground() {
     let src = repo_root().join("src");
     let files: Vec<_> = sources()
         .into_iter()
-        .filter(|p| p.starts_with(&src) && has_extension(p, &["rs"]))
+        .filter(|path| path.starts_with(&src) && has_extension(path, &["rs"]))
         .collect();
     assert!(!files.is_empty(), "no module found under {}", src.display());
 
     let over: Vec<String> = files
         .iter()
-        .filter_map(|f| {
-            let n = code_lines(f);
+        .filter_map(|file| {
+            let n = code_lines(file);
             (n > MAX_MODULE_LINES)
-                .then(|| format!("  {}: {n} lines (max {MAX_MODULE_LINES})", f.display()))
+                .then(|| format!("  {}: {n} lines (max {MAX_MODULE_LINES})", file.display()))
         })
         .collect();
     assert!(over.is_empty(), "Module too large:\n{}\n", over.join("\n"));

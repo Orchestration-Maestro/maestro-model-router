@@ -6,11 +6,14 @@
 //! observed rather than assumed, and a requested exit really happens with the
 //! requested code.
 
+use std::env::temp_dir;
+use std::fs::remove_file;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
-use std::process::{Child, Command};
-use std::thread::sleep;
+use std::process::{self, Child, Command, ExitStatus};
 use std::time::{Duration, Instant};
+
+use crate::support::poll::{eventually, polled};
 
 /// A port the operating system says is free. The window before the stub binds
 /// it is a race, which [`serving`] answers the way `launch::server` does.
@@ -66,7 +69,7 @@ fn health(port: u16) -> Option<u16> {
 #[derive(Debug)]
 enum Listening {
     Ready(u16),
-    Exited(std::process::ExitStatus),
+    Exited(ExitStatus),
     Never,
 }
 
@@ -79,18 +82,16 @@ enum Listening {
 /// waiting out the budget for it reports a timeout where the child printed
 /// the actual cause on stderr before the first poll.
 fn listening(running: &mut Running, port: u16) -> Listening {
-    for _ in 0..200 {
+    polled(Duration::from_secs(5), Duration::from_millis(25), || {
         if let Some(code) = health(port) {
-            return Listening::Ready(code);
+            return Some(Listening::Ready(code));
         }
         match running.0.try_wait() {
-            Ok(Some(status)) => return Listening::Exited(status),
-            Ok(None) => {}
+            Ok(status) => status.map(Listening::Exited),
             Err(error) => panic!("cannot ask whether the stub is still running: {error}"),
         }
-        sleep(Duration::from_millis(25));
-    }
-    Listening::Never
+    })
+    .unwrap_or(Listening::Never)
 }
 
 /// Starts the stub with `arguments` on a free port and waits until it
@@ -131,13 +132,12 @@ fn health_reports_loading_until_the_readiness_moment_then_ready() {
         "a loading server answers 503, which is what llama-server does"
     );
 
-    for _ in 0..200 {
-        if health(port) == Some(200) {
-            return;
-        }
-        sleep(Duration::from_millis(25));
-    }
-    panic!("the stub never became ready");
+    assert!(
+        eventually(Duration::from_secs(5), Duration::from_millis(25), || {
+            health(port) == Some(200)
+        }),
+        "the stub never became ready"
+    );
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn on_a_free_port(arguments: &[&str]) -> (Running, u16) {
 }
 
 /// How the stub started with `arguments` on a free port exited.
-fn exit_status(arguments: &[&str]) -> std::process::ExitStatus {
+fn exit_status(arguments: &[&str]) -> ExitStatus {
     let (mut running, _) = on_a_free_port(arguments);
     running.0.wait().expect("the stub exits on its own")
 }
@@ -327,11 +327,11 @@ fn a_client_that_leaves_during_the_silence_is_noticed_before_it_ends() {
     // cannot wake its own blocked read -- Windows cannot -- that is how a
     // model whose caller hung up is released at all, so a stub that noticed
     // only on its first write would hold the model for the whole silence.
-    let marker = std::env::temp_dir().join(format!(
+    let marker = temp_dir().join(format!(
         "model-router-silent-hangup-marker-{}",
-        std::process::id()
+        process::id()
     ));
-    drop(std::fs::remove_file(&marker));
+    drop(remove_file(&marker));
     let marker_text = marker.display().to_string();
     let (_running, port, _) = serving(&[
         "--stream-events",
@@ -350,12 +350,10 @@ fn a_client_that_leaves_during_the_silence_is_noticed_before_it_ends() {
         .expect("the request, written");
     drop(client);
 
-    let left = Instant::now();
-    while !marker.exists() && left.elapsed() < Duration::from_secs(3) {
-        sleep(Duration::from_millis(25));
-    }
-    let noticed = marker.exists();
-    drop(std::fs::remove_file(&marker));
+    let noticed = eventually(Duration::from_secs(3), Duration::from_millis(25), || {
+        marker.exists()
+    });
+    drop(remove_file(&marker));
     assert!(
         noticed,
         "the stub noticed its client leave within three seconds of a \

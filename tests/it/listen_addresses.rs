@@ -12,14 +12,19 @@
 //! whichever machine it ran on. Two ports is the shape the field uses -- the
 //! bridge is given its own -- and it is the shape every platform can bind.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::net::{SocketAddr, TcpListener};
+use std::sync::{Arc, mpsc};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::support::{MODEL, ModelsRoot, catalog_text, get, request, status, stub_binary};
 
-use maestro_model_router::launch::Failure;
-use maestro_model_router::proxy::Router;
+use maestro_model_router::admission::Budget;
+use maestro_model_router::catalog::Catalog;
+use maestro_model_router::idle::{IdleWindow, Limits};
+use maestro_model_router::launch::{Failure, Server};
+use maestro_model_router::proxy::{Router, Source, await_assigned};
+use maestro_model_router::queue::Wait;
 
 /// An ephemeral loopback port, which the operating system chooses.
 fn ephemeral() -> SocketAddr {
@@ -31,18 +36,17 @@ fn ephemeral() -> SocketAddr {
 /// Separate from `listening` because half of these tests are about what
 /// binding refuses, and a refusal has nothing to serve.
 fn bound(addresses: &[SocketAddr], root: &ModelsRoot) -> Result<Router, Failure> {
-    let catalog =
-        maestro_model_router::catalog::Catalog::parse(&catalog_text("")).expect("a usable catalog");
-    let server = maestro_model_router::launch::Server::located(Some(&stub_binary()))
-        .expect("the stub binary is built by cargo test");
-    let limits = maestro_model_router::idle::Limits::new(
-        maestro_model_router::admission::Budget::new(None),
-        maestro_model_router::idle::IdleWindow::new(std::time::Duration::ZERO),
-        maestro_model_router::queue::Wait::new(std::time::Duration::ZERO),
+    let catalog = Catalog::parse(&catalog_text("")).expect("a usable catalog");
+    let server =
+        Server::located(Some(&stub_binary())).expect("the stub binary is built by cargo test");
+    let limits = Limits::new(
+        Budget::new(None),
+        IdleWindow::new(Duration::ZERO),
+        Wait::new(Duration::ZERO),
     );
     Router::bind(
         addresses,
-        maestro_model_router::proxy::Source {
+        Source {
             catalog,
             // These tests are about what binding accepts and refuses; none of
             // them reloads, so the path only has to exist as a value.
@@ -61,7 +65,7 @@ fn bound(addresses: &[SocketAddr], root: &ModelsRoot) -> Result<Router, Failure>
 fn listening(addresses: &[SocketAddr], root: &ModelsRoot) -> Arc<Router> {
     let router = Arc::new(bound(addresses, root).expect("ephemeral loopback ports"));
     let serving = Arc::clone(&router);
-    std::thread::spawn(move || serving.serve());
+    thread::spawn(move || serving.serve());
     router
 }
 
@@ -196,7 +200,7 @@ fn an_address_that_can_be_bound_is_not_waited_for() {
 fn an_address_refused_for_another_reason_is_not_waited_for() {
     // Only an address no interface holds is worth waiting for. A port that
     // is taken does not come free by itself, and is the bind's to report.
-    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let taken = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
     let within = Duration::from_secs(2);
     let (waited, said) = awaited(vec![taken.local_addr().expect("its address")], within);
     assert!(
@@ -209,11 +213,11 @@ fn an_address_refused_for_another_reason_is_not_waited_for() {
 /// Waits for `addresses` on a thread of its own, and gives back how long that
 /// took and what it said -- failing, rather than hanging, if it never ends.
 fn awaited(addresses: Vec<SocketAddr>, within: Duration) -> (Duration, String) {
-    let (done, finished) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    let (done, finished) = mpsc::channel();
+    thread::spawn(move || {
         let mut notices = Vec::new();
         let started = Instant::now();
-        maestro_model_router::proxy::await_assigned(&addresses, within, &mut notices);
+        await_assigned(&addresses, within, &mut notices);
         let said = String::from_utf8_lossy(&notices).into_owned();
         drop(done.send((started.elapsed(), said)));
     });
