@@ -11,16 +11,19 @@
 //! nothing.
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
+use std::io;
+use std::iter;
 use std::net::TcpStream;
 
-use super::{Shared, reply};
+use super::reply;
+use super::shared::Shared;
+use crate::build::{COMMIT, VERSION};
 
 /// The exposition format's own content type, which a scraper checks.
 const TEXT_FORMAT: &str = "text/plain; version=0.0.4";
 
 /// Answers one scrape.
-pub(super) fn answer(stream: &TcpStream, shared: &Shared, head_only: bool) -> std::io::Result<()> {
+pub(super) fn answer(stream: &TcpStream, shared: &Shared, head_only: bool) -> io::Result<()> {
     let catalog = shared.catalog();
     let loaded = shared.slots.loaded(&catalog);
     let held: HashMap<String, Option<u64>> = shared.slots.memory(&catalog).into_iter().collect();
@@ -34,8 +37,8 @@ pub(super) fn answer(stream: &TcpStream, shared: &Shared, head_only: bool) -> st
         [(
             format!(
                 "version=\"{}\",commit=\"{}\"",
-                label(crate::build::VERSION),
-                label(crate::build::COMMIT)
+                label(VERSION),
+                label(COMMIT)
             ),
             1,
         )],
@@ -96,17 +99,17 @@ fn gauge(
     help: &str,
     samples: impl IntoIterator<Item = (String, u64)>,
 ) {
-    // Writing to a String cannot fail, so this says so once rather than
-    // dressing an impossibility up as an error this function returns.
-    let infallible = "writing to a String cannot fail";
-    write!(out, "# HELP {name} {help}\n# TYPE {name} gauge\n").expect(infallible);
-    for (labels, value) in samples {
+    // Extended with formatted lines rather than written to: writing to a
+    // String cannot fail, and `write!` would still hand back an error for
+    // this to dismiss.
+    let lines = samples.into_iter().map(|(labels, value)| {
         if labels.is_empty() {
-            writeln!(out, "{name} {value}").expect(infallible);
+            format!("{name} {value}\n")
         } else {
-            writeln!(out, "{name}{{{labels}}} {value}").expect(infallible);
+            format!("{name}{{{labels}}} {value}\n")
         }
-    }
+    });
+    out.extend(iter::once(format!("# HELP {name} {help}\n# TYPE {name} gauge\n")).chain(lines));
 }
 
 /// A label value as the format quotes it. A catalog key is TOML, which may

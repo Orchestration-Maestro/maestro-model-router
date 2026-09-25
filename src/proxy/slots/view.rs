@@ -6,7 +6,7 @@ use crate::admission::Loaded as Held;
 use crate::catalog::{Catalog, Entry};
 
 use super::super::loaded::{Loaded, busy};
-use super::Slots;
+use super::table::Slots;
 
 use std::sync::PoisonError;
 
@@ -34,6 +34,9 @@ impl Slots {
     /// every caller clear of the slot invariant in [`super::super::loaded`] --
     /// a rule about where an `Arc` is cloned, which warns by name against
     /// listing what is loaded by handing out references.
+    ///
+    /// An entry a reload has dropped since `catalog` was read has no slot,
+    /// and is not loaded: a reload drops only a slot that was empty.
     pub(super) fn snapshot<T>(
         &self,
         catalog: &Catalog,
@@ -46,7 +49,7 @@ impl Slots {
                 // Bound before it is locked: the map's lock is released
                 // before the slot's is taken, which is the order the module
                 // keeps and a temporary would not.
-                let handle = self.slot(&entry.id);
+                let handle = self.slot(&entry.id)?;
                 let slot = handle.lock().unwrap_or_else(PoisonError::into_inner);
                 let held = slot.as_ref()?;
                 Some(project(entry, held))

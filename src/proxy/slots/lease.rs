@@ -64,15 +64,18 @@ impl Freed {
 /// stops being true: the handle goes first and the bell rings after, so a
 /// request woken by the ring finds the child idle.
 pub(in crate::proxy) struct Lease<'a> {
-    child: Option<Arc<Child>>,
-    freed: &'a Freed,
+    /// Declared before `_ring`, which is what makes the order above hold: a
+    /// struct's fields are dropped in the order they are declared.
+    child: Arc<Child>,
+    /// Held for its `Drop` alone, which is the ring, and never read.
+    _ring: Ring<'a>,
 }
 
 impl<'a> Lease<'a> {
     pub(super) fn new(child: Arc<Child>, freed: &'a Freed) -> Self {
         Self {
-            child: Some(child),
-            freed,
+            child,
+            _ring: Ring(freed),
         }
     }
 }
@@ -81,22 +84,23 @@ impl Deref for Lease<'_> {
     type Target = Child;
 
     fn deref(&self) -> &Child {
-        // Taken only by `drop`, after which nothing can deref it.
-        self.child
-            .as_deref()
-            .expect("a lease holds its child until it is dropped")
+        &self.child
     }
 }
 
-impl Drop for Lease<'_> {
+/// Rings the bell it holds when it is dropped, which a [`Lease`] does once
+/// its child's handle is gone.
+struct Ring<'a>(&'a Freed);
+
+impl Drop for Ring<'_> {
     fn drop(&mut self) {
-        drop(self.child.take());
-        self.freed.ring();
+        self.0.ring();
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
 
@@ -119,11 +123,17 @@ mod tests {
         let freed = Arc::new(Freed::new());
         let heard = freed.heard();
         let ringer = Arc::clone(&freed);
+        // Rung once the waiter says it is about to wait, rather than after a
+        // pause: the ring lands as the wait begins or while it runs, and
+        // either must end it at once. What this refuses is a wait that sleeps
+        // to its deadline.
+        let (waiting, told) = mpsc::channel();
         let ringing = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(50));
+            told.recv().expect("the waiter said it was waiting");
             ringer.ring();
         });
 
+        waiting.send(()).expect("the ringer is listening");
         let started = Instant::now();
         freed.wait(heard, started + Duration::from_secs(30));
         assert!(

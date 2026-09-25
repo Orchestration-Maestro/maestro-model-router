@@ -7,12 +7,14 @@
 //! It reaches children through the same path a request does. That is the whole
 //! of its concurrency argument -- there is none of its own.
 
+use std::io::{self, Write as _};
 use std::sync::PoisonError;
 use std::time::Instant;
 
 use crate::catalog::Residency;
 
-use super::Shared;
+use super::shared::Shared;
+use super::slots::say;
 
 /// Loads every resident entry, reporting and recording what failed.
 ///
@@ -27,9 +29,11 @@ use super::Shared;
 /// other model, which is a worse outcome than the one it prevents; the
 /// operator learns at startup instead of when the first caller arrives.
 ///
-/// Each outcome is printed because a cold load's cost has no other way to
-/// reach the operator, and each failure is recorded as well because this runs
-/// on a thread whose output belongs to nobody's call.
+/// Each outcome is said because a cold load's cost has no other way to reach
+/// the operator, and each failure is recorded as well because this runs on a
+/// thread whose output belongs to nobody's call. Written the way [`say`]
+/// writes, with the error dropped, and for its reason: a closed output is not
+/// a reason to end the thread that loads the rest.
 pub(super) fn load(shared: &Shared) {
     let catalog = shared.catalog();
     for entry in catalog
@@ -39,15 +43,17 @@ pub(super) fn load(shared: &Shared) {
     {
         let started = Instant::now();
         match shared.child(entry) {
-            Ok(_) => println!(
+            Ok(_) => say(&format!(
                 "resident {} loaded in {:.1} seconds",
                 entry.id,
                 started.elapsed().as_secs_f64()
-            ),
+            )),
             Err(failure) => {
                 let reported = format!("{}: {failure}", entry.id);
-                eprintln!("resident {reported}");
-                eprintln!("  serving the rest of the catalog without it");
+                drop(writeln!(
+                    io::stderr(),
+                    "resident {reported}\n  serving the rest of the catalog without it"
+                ));
                 shared
                     .resident_failures
                     .lock()
