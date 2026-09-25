@@ -89,6 +89,7 @@ clippy.all = { level = "deny", priority = -1 }
 clippy.pedantic = { level = "deny", priority = -1 }
 clippy.cargo = { level = "deny", priority = -1 }
 rust.rust_2018_idioms = { level = "deny", priority = -1 }
+rust.nonstandard_style = { level = "deny", priority = -1 }
 clippy.allow_attributes = "deny"
 clippy.allow_attributes_without_reason = "deny"
 clippy.unwrap_used = "deny"
@@ -109,6 +110,7 @@ clippy.should_panic_without_expect = "deny"
 clippy.undocumented_unsafe_blocks = "deny"
 clippy.cognitive_complexity = "deny"
 clippy.excessive_nesting = "deny"
+clippy.same_name_method = "deny"
 rust.missing_docs = "deny"
 rust.unreachable_pub = "deny"
 rust.missing_debug_implementations = "deny"

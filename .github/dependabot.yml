@@ -14,6 +14,7 @@ updates:
     # rust-gate sync moves the organization's reusable workflows.
     ignore:
       - dependency-name: Orchestration-Maestro/rust-workflows*
+      - dependency-name: Orchestration-Maestro/maestro-rust-workflows*
     groups:
       actions:
         patterns: ["*"]

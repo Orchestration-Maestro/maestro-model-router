@@ -123,7 +123,7 @@ deploy:
         exit 1
     fi
     commit=$(git rev-parse --short=12 HEAD)
-    MODEL_ROUTER_COMMIT="$commit" cargo build --release --locked --bin model-router
+    MAESTRO_MODEL_ROUTER_COMMIT="$commit" cargo build --release --locked --bin model-router
     for _ in $(seq 600); do
         open=$(ss -Htnp state established | grep -c '"model-router"' || true)
         [ "$open" -eq 0 ] && break

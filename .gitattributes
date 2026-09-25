@@ -49,6 +49,6 @@ examples/** linguist-vendored=false
 # files the gate reads when the action builds it, .editorconfig and
 # .gitattributes among them.
 .github/ISSUE_TEMPLATE/     export-ignore
-.github/pull_request_template.md export-ignore
+.github/PULL_REQUEST_TEMPLATE.md export-ignore
 .gitignore                 export-ignore
 .pre-commit-config.yaml    export-ignore

@@ -297,7 +297,7 @@ mod with_the_stub {
     // passing on writes the entry before the child's line: a failure quotes
     // the child's last words indented, under the failure.
     #[test]
-    fn a_childs_lines_reach_standard_error_under_its_entry() {
+    fn a_child_line_reaches_standard_error_under_its_entry() {
         let root = ModelsRoot::with(&[MODEL]);
         let catalog = written(
             &root,
