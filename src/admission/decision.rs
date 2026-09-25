@@ -69,8 +69,9 @@ impl Budget {
     /// is no more a candidate than any other busy model.
     ///
     /// A list beside `loaded` rather than a field on [`Loaded`], because
-    /// `Loaded` is built with a literal outside this crate, and a field added
-    /// to it would break every such literal.
+    /// every field of `Loaded` is public: code outside this crate may build
+    /// one with a literal, and a field added to it would break every such
+    /// literal.
     #[must_use]
     pub fn admit_with_guests(
         &self,

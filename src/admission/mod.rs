@@ -1,13 +1,14 @@
 //! Deciding what may be loaded, and what must be unloaded first.
 //!
 //! This module touches no process and no socket. It takes a budget, what is
-//! loaded now, what is wanted, and what the device has free, and returns a
-//! decision; acting on that decision belongs to the caller. That separation
-//! is deliberate: the policy is the part of eviction that is hard to get
-//! right, and keeping it a pure function means it can be driven exhaustively
-//! from a handful of values without a machine, a model, or a clock that has
-//! to be waited on. The one place the machine is asked is `Budget`'s own
-//! construction, in `budget.rs`, and it is asked before any of this runs.
+//! loaded now and which of it are guests, what is wanted, and what the device
+//! has free, and returns a decision; acting on that decision belongs to the
+//! caller. That separation is deliberate: the policy is the part of eviction
+//! that is hard to get right, and keeping it a pure function means it can be
+//! driven exhaustively from a handful of values without a machine, a model,
+//! or a clock that has to be waited on. The one place the machine is asked is
+//! `Budget`'s own construction, in `budget.rs`, and it is asked before any of
+//! this runs.
 //!
 //! Two rules shape every decision here.
 //!

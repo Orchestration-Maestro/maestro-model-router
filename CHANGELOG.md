@@ -49,7 +49,8 @@ records as the commit on `main`.
   room: one whose model would need another unloaded is refused with `503` and
   `insufficient_room` before anything is unloaded. Any other value is refused
   with `400` and `unknown_room`. A model loaded that way is a guest until it
-  is unloaded: when a later request needs room, idle guests are unloaded
-  before any other model.
+  is unloaded: when a later request without the header needs room, idle
+  guests are unloaded before any other model. A free-room request unloads
+  nothing, a guest included.
 
 Nothing released yet. The first tag will be `v0.1.0`.

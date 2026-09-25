@@ -129,6 +129,13 @@ safe from eviction, because unloading one mid-answer truncates a stream the
 caller cannot tell from a finished one.
 _Avoid_: locked, in use.
 
+**Guest**:
+A model loaded into room nothing held, for a request that would rather be
+refused than cost another model its place. It stays a guest until it is
+unloaded, and an idle guest is the first candidate to go when a request that
+made no such promise needs room.
+_Avoid_: temporary model, low-priority model.
+
 **Readiness**:
 Whether a child has finished loading and will answer. Distinct from liveness.
 

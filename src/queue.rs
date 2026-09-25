@@ -1,9 +1,10 @@
 //! How long a request waits for room before it is refused.
 //!
-//! The router evicts the coldest idle model to make room. When every model
-//! that could go is *busy* -- something is reading from it -- there is nothing
-//! to evict without truncating somebody's answer, and the request that wanted
-//! the room has two honest options: be told to come back, or wait.
+//! The router evicts an idle model to make room: a guest if there is one, and
+//! otherwise the coldest. When every model that could go is *busy* --
+//! something is reading from it -- there is nothing to evict without
+//! truncating somebody's answer, and the request that wanted the room has two
+//! honest options: be told to come back, or wait.
 //!
 //! Before this module it was always told to come back, with a 503 and a note
 //! saying a retry might work. That is correct and it puts the retry loop in

@@ -473,23 +473,24 @@ nothing else: any other, an empty one included, is refused with `400` and
 very model its caller meant to keep.
 
 A model loaded into free room is a guest until it is unloaded. When a later
-request needs room, idle guests are unloaded before any other model, the
-coldest guest first, and only then the coldest of the rest; with no guest
-loaded, eviction is exactly as the next section describes. So an embedder that
-a search loaded into free room gives its room back before a chat model loses
-its place. A guest that is answering is never unloaded, like any model being
-read from, which is one of the known limits below.
+request without the header needs room, idle guests are unloaded before any
+other model, the coldest guest first, and only then the coldest of the rest;
+with no guest loaded, eviction is exactly as the next section describes. So an
+embedder that a search loaded into free room gives its room back before a chat
+model loses its place. A free-room request unloads nothing, a guest included.
+A guest that is answering is never unloaded, like any model being read from,
+which is one of the known limits below.
 
 ### What eviction does, and what it never does
 
 With a budget set, a model that does not fit causes an idle on-demand model to
 be unloaded first: the coldest idle [guest](#loading-only-into-free-room) if
 there is one, and otherwise the coldest idle model. Two questions are asked
-before a model is started, and both have to say yes. The budget is a ceiling on what the loaded models
-cost, where each costs its catalog estimate until it has been measured and the
-larger of the two afterwards. A model that turns out to hold four times its
-estimate is counted at what it holds from the moment that is known, and the
-operator reads it on the line the load prints:
+before a model is started, and both have to say yes. The budget is a ceiling
+on what the loaded models cost, where each costs its catalog estimate until it
+has been measured and the larger of the two afterwards. A model that turns out
+to hold four times its estimate is counted at what it holds from the moment
+that is known, and the operator reads it on the line the load prints:
 
 ```text
 qwen3-06b: loading, estimated at 1024 MiB
