@@ -6,7 +6,7 @@
 //! two ways it can stop -- a bound reached, a deadline reached -- are what
 //! this module has to say.
 
-use std::io::{BufRead, Read as _};
+use std::io::{self, BufRead, ErrorKind, Read as _};
 
 use crate::proxy::refusal::{Cause, Refusal};
 
@@ -83,11 +83,8 @@ pub(in crate::proxy) fn read(reader: &mut impl BufRead) -> Result<Vec<String>, R
 /// `WouldBlock` on the Unix platforms and as `TimedOut` on Windows, and a
 /// router that knew only one would report a silent caller as a malformed one
 /// on the other.
-pub(in crate::proxy) fn timed_out(error: &std::io::Error) -> bool {
-    matches!(
-        error.kind(),
-        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-    )
+pub(in crate::proxy) fn timed_out(error: &io::Error) -> bool {
+    matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
 }
 
 /// A head the router will not read, and why.
@@ -160,15 +157,13 @@ mod tests {
 
     #[test]
     fn a_deadline_is_told_apart_from_a_peer_that_went_away() {
-        for kind in [std::io::ErrorKind::WouldBlock, std::io::ErrorKind::TimedOut] {
+        for kind in [ErrorKind::WouldBlock, ErrorKind::TimedOut] {
             assert!(
-                timed_out(&std::io::Error::from(kind)),
+                timed_out(&io::Error::from(kind)),
                 "{kind:?} is what a read deadline looks like on one platform \
                  or the other"
             );
         }
-        assert!(!timed_out(&std::io::Error::from(
-            std::io::ErrorKind::ConnectionReset
-        )));
+        assert!(!timed_out(&io::Error::from(ErrorKind::ConnectionReset)));
     }
 }

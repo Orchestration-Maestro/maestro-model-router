@@ -1,24 +1,12 @@
-//! The request head: what the router reads of a request, and what it sends on.
+//! A request head as the router reads it, and as it sends it on.
 //!
-//! Pure translation. Lines in, a parsed head out, and a rewritten head back to
-//! bytes -- no sockets, no processes, no clock. That is what lets every rule
-//! below be asserted directly rather than inferred from a running relay. The
-//! one step that does touch a socket, reading the lines within bounds, is
-//! `read` beside this and is re-exported from here so a caller asks one
-//! module for a head.
-//!
-//! This is the only part of a request the router understands. Everything after
-//! the blank line is copied without being read, which is the decision the
-//! whole slice rests on: what the router does not parse, it cannot buffer.
+//! The translation half of `head`: lines in, a parsed head out, and a
+//! rewritten head back to bytes. Nothing here touches a socket.
 
-use std::fmt::Write as _;
 use std::net::SocketAddr;
 
-use super::endpoint::Endpoint;
-use super::refusal::{Cause, Refusal};
-
-mod read;
-pub(super) use read::{read, timed_out};
+use super::super::endpoint::Endpoint;
+use super::super::refusal::{Cause, Refusal};
 
 /// What a request said about the length of its body.
 ///
@@ -29,7 +17,7 @@ pub(super) use read::{read, timed_out};
 /// hand the child a declared length with nothing behind it, and defaulting it
 /// to zero would refuse the request later for something else entirely.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Length {
+pub(in crate::proxy) enum Length {
     /// No `Content-Length` header at all.
     Absent,
     /// A length this router can act on.
@@ -44,18 +32,18 @@ pub(super) enum Length {
 /// The endpoint is resolved at parse time because every caller wants it: it
 /// says which model answers, and what the child is asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Head {
+pub(in crate::proxy) struct Head {
     /// The method, passed through unchanged.
-    pub(super) method: String,
+    pub(in crate::proxy) method: String,
     /// Which endpoint the path addressed.
-    pub(super) endpoint: Endpoint,
+    pub(in crate::proxy) endpoint: Endpoint,
     /// Every header as received, in order.
-    pub(super) headers: Vec<(String, String)>,
+    pub(in crate::proxy) headers: Vec<(String, String)>,
     /// What the request said about its body's length.
-    pub(super) length: Length,
+    pub(in crate::proxy) length: Length,
     /// Whether the request announced chunked framing, which this router
     /// refuses rather than guesses at.
-    pub(super) chunked: bool,
+    pub(in crate::proxy) chunked: bool,
     /// Whether the caller is holding its body back until it is told to send
     /// it, as `Expect: 100-continue` says.
     ///
@@ -63,7 +51,7 @@ pub(super) struct Head {
     /// read here, on the generic endpoint before any child is involved, so
     /// the interim answer has to come from here and the header does not
     /// travel on.
-    pub(super) expects_continue: bool,
+    pub(in crate::proxy) expects_continue: bool,
 }
 
 /// Turns the lines of a head into the parts the router routes on.
@@ -72,7 +60,7 @@ pub(super) struct Head {
 ///
 /// Returns a [`Refusal`] when there is no request line, or when the path is
 /// not a shape this router serves.
-pub(super) fn parse(lines: &[String]) -> Result<Head, Refusal> {
+pub(in crate::proxy) fn parse(lines: &[String]) -> Result<Head, Refusal> {
     let mut words = lines
         .first()
         .ok_or_else(|| malformed("a request with no request line"))?
@@ -138,7 +126,7 @@ impl Head {
     ///
     /// A malformed length never reaches here: it is refused where a status is
     /// still possible, which is before anything is forwarded.
-    pub(super) fn body_bytes(&self) -> usize {
+    pub(in crate::proxy) fn body_bytes(&self) -> usize {
         match self.length {
             Length::Given(bytes) => bytes,
             Length::Absent | Length::Malformed(_) => 0,
@@ -150,16 +138,11 @@ impl Head {
     ///
     /// Every other header is passed through as received. The router is not a
     /// participant in the conversation, only a relay for it.
-    pub(super) fn rewrite(&self, upstream: SocketAddr) -> String {
-        let mut text = String::new();
+    pub(in crate::proxy) fn rewrite(&self, upstream: SocketAddr) -> String {
         let method = &self.method;
         let suffix = self.endpoint.suffix();
-        // Writing to a String cannot fail, so this says so once rather than
-        // dressing an impossibility up as an error this function returns.
-        let infallible = "writing to a String cannot fail";
-        write!(text, "{method} {suffix} HTTP/1.1\r\n").expect(infallible);
-        write!(text, "Host: {upstream}\r\n").expect(infallible);
-        text.push_str("Connection: close\r\n");
+        let mut text =
+            format!("{method} {suffix} HTTP/1.1\r\nHost: {upstream}\r\nConnection: close\r\n");
 
         for (name, value) in &self.headers {
             // The caller's Host named the router, and its Connection was about
@@ -173,7 +156,7 @@ impl Head {
             {
                 continue;
             }
-            write!(text, "{name}: {value}\r\n").expect(infallible);
+            text.extend([name.as_str(), ": ", value.as_str(), "\r\n"]);
         }
 
         text.push_str("\r\n");

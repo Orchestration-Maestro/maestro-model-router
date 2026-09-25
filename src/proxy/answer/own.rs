@@ -14,13 +14,16 @@
 //! they share is `reply::json`; what remains here is only the part that
 //! differs, which is the whole reason there are two.
 
+use std::collections::HashMap;
+use std::io;
 use std::net::TcpStream;
 
+use crate::build::{COMMIT, VERSION};
 use crate::catalog::Entry;
 
 use super::super::refusal::{Cause, Refusal};
-use super::Shared;
-use super::reply;
+use super::super::reply;
+use super::super::shared::Shared;
 
 /// Every entry that can hold a conversation, with whether it is loaded, in
 /// the shape a llama.cpp client reads in router mode.
@@ -40,15 +43,10 @@ use super::reply;
 /// only fail. `/v1/models` still carries them, because a caller wanting an
 /// embedding has to find it somewhere, and that surface is a catalogue rather
 /// than a menu.
-pub(super) fn catalogue(
-    stream: &TcpStream,
-    shared: &Shared,
-    head_only: bool,
-) -> std::io::Result<()> {
+pub(super) fn catalogue(stream: &TcpStream, shared: &Shared, head_only: bool) -> io::Result<()> {
     let catalog = shared.catalog();
     let loaded = shared.slots.loaded(&catalog);
-    let held: std::collections::HashMap<String, Option<u64>> =
-        shared.slots.memory(&catalog).into_iter().collect();
+    let held: HashMap<String, Option<u64>> = shared.slots.memory(&catalog).into_iter().collect();
 
     let data: Vec<serde_json::Value> = catalog
         .entries
@@ -115,14 +113,14 @@ pub(super) fn catalogue(
 /// is not running starts it, which is the whole point of the router. A client
 /// that reads this decides not to ask for a load before a completion, and it
 /// would be right.
-pub(super) fn properties(stream: &TcpStream, head_only: bool) -> std::io::Result<()> {
+pub(super) fn properties(stream: &TcpStream, head_only: bool) -> io::Result<()> {
     reply::json(
         stream,
         &serde_json::json!({
             "models_autoload": true,
             // Which build is answering, so an operator asks the running
             // router rather than trusting what was meant to be installed.
-            "build": { "version": crate::build::VERSION, "commit": crate::build::COMMIT },
+            "build": { "version": VERSION, "commit": COMMIT },
         }),
         head_only,
     )
@@ -146,7 +144,7 @@ pub(super) fn properties(stream: &TcpStream, head_only: bool) -> std::io::Result
 ///
 /// Never `HEAD`: the method set for this endpoint is `POST` alone, so a
 /// caller that got here sent one.
-pub(super) fn reload(stream: &TcpStream, shared: &Shared) -> std::io::Result<()> {
+pub(super) fn reload(stream: &TcpStream, shared: &Shared) -> io::Result<()> {
     let outcome = shared
         .reload()
         .map(|changed| {
@@ -179,7 +177,7 @@ pub(super) fn reload(stream: &TcpStream, shared: &Shared) -> std::io::Result<()>
 /// would and is refused for want of room as a request would be. The reply
 /// waits for the model rather than for the decision, unlike llama.cpp's own:
 /// a caller told `success` can ask the model at once.
-pub(super) fn load(stream: &TcpStream, shared: &Shared, entry: &Entry) -> std::io::Result<()> {
+pub(super) fn load(stream: &TcpStream, shared: &Shared, entry: &Entry) -> io::Result<()> {
     let outcome = shared.child(entry).map(|_| done()).map_err(Refusal::from);
     answered(stream, outcome)
 }
@@ -189,7 +187,7 @@ pub(super) fn load(stream: &TcpStream, shared: &Shared, entry: &Entry) -> std::i
 /// A model answering a request is refused rather than ended: cutting off a
 /// caller mid-answer is not what an operator freeing memory means. One that
 /// is not running is already what was asked for.
-pub(super) fn unload(stream: &TcpStream, shared: &Shared, entry: &Entry) -> std::io::Result<()> {
+pub(super) fn unload(stream: &TcpStream, shared: &Shared, entry: &Entry) -> io::Result<()> {
     let outcome = if shared.slots.let_go(&entry.id) {
         Ok(done())
     } else {
@@ -211,10 +209,7 @@ fn done() -> serde_json::Value {
 
 /// The reply for what one of the router's own changes came to: what it did,
 /// or why it did not.
-fn answered(
-    stream: &TcpStream,
-    outcome: Result<serde_json::Value, Refusal>,
-) -> std::io::Result<()> {
+fn answered(stream: &TcpStream, outcome: Result<serde_json::Value, Refusal>) -> io::Result<()> {
     match outcome {
         Ok(value) => reply::json(stream, &value, false),
         Err(refusal) => reply::refuse(stream, &refusal),
