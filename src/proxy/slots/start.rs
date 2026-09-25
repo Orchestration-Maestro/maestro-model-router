@@ -15,7 +15,9 @@ use crate::catalog::Entry;
 use crate::launch::{Failure, Server};
 use crate::memory::Measurement;
 
+use super::super::head::AllowedRoom;
 use super::super::loaded::Loaded;
+use super::admit::Asked;
 use super::table::Slots;
 
 impl Slots {
@@ -25,15 +27,19 @@ impl Slots {
     /// floor rather than a peak: the context fills as the model is used.
     /// That is why admission counts the larger of the estimate and this.
     ///
+    /// A child started for a caller that allowed free room alone is a guest,
+    /// and stays one until it is unloaded.
+    ///
     /// # Errors
     ///
     /// Returns the [`Failure`] the launcher returned, having said so.
     pub(super) fn start(
         &self,
-        entry: &Entry,
+        asked: Asked<'_>,
         server: &Server,
         root: &Path,
     ) -> Result<Loaded, Failure> {
+        let entry = asked.entry;
         self.voice.say(&format!(
             "{}: loading, estimated at {} MiB",
             entry.id, entry.memory_estimate_mib
@@ -58,6 +64,7 @@ impl Slots {
             child: Arc::new(child),
             last_used: Instant::now(),
             measured,
+            guest: asked.room == AllowedRoom::Free,
         })
     }
 }
@@ -168,7 +175,12 @@ mod tests {
         ))
         .expect("this test binary's own path is a file");
 
-        let Err(failure) = slots.start(&entry(), &server, Path::new("/somewhere")) else {
+        let model = entry();
+        let asked = Asked {
+            entry: &model,
+            room: AllowedRoom::Any,
+        };
+        let Err(failure) = slots.start(asked, &server, Path::new("/somewhere")) else {
             panic!("a model file that is not there does not load");
         };
         drop(slots);

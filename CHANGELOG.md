@@ -48,6 +48,8 @@ records as the commit on `main`.
 - A request carrying `X-Model-Router-Room: free` is loaded only into free
   room: one whose model would need another unloaded is refused with `503` and
   `insufficient_room` before anything is unloaded. Any other value is refused
-  with `400` and `unknown_room`.
+  with `400` and `unknown_room`. A model loaded that way is a guest until it
+  is unloaded: when a later request needs room, idle guests are unloaded
+  before any other model.
 
 Nothing released yet. The first tag will be `v0.1.0`.

@@ -42,11 +42,12 @@ pub(in crate::proxy) const ROOM: &str = "X-Model-Router-Room";
 /// rather be refused than served by an unload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::proxy) enum AllowedRoom {
-    /// No header: room nothing holds, or room made by unloading the coldest
-    /// idle model, as every request had before the header existed.
+    /// No header: room nothing holds, or room made by unloading an idle
+    /// model, as every request had before the header existed.
     Any,
     /// `free`: room nothing holds, and nothing else. What would need a model
-    /// unloaded is refused before anything is.
+    /// unloaded is refused before anything is, and what is loaded is a guest
+    /// until it is unloaded: the first to give its room back.
     Free,
 }
 

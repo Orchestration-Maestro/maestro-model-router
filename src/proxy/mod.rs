@@ -30,9 +30,10 @@
 //! [`Router::bind`] takes [`Limits`](crate::idle::Limits): a memory budget and
 //! an idle window, configured independently, and together these are what can
 //! end a process with no caller asking to stop it. Under a budget, a request
-//! for a model that does not fit unloads the coldest idle one to make room; a
-//! model something is reading from is never chosen, and when the only room is
-//! held by one of those the request is refused instead. An idle window ends a
+//! for a model that does not fit unloads an idle one to make room, one loaded
+//! into free room first and otherwise the coldest; a model something is
+//! reading from is never chosen, and when the only room is held by one of
+//! those the request is refused instead. An idle window ends a
 //! process a different way: a background thread unloads an on-demand model
 //! nothing has asked for in longer than the window, with no request involved
 //! at all. Without a budget nothing is ever unloaded to make room; without a

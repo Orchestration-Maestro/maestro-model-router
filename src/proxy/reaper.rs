@@ -66,12 +66,7 @@ pub(super) fn run(shared: &Weak<Shared>) {
         // idle, and so its estimate stops counting before anything else
         // this tick decides.
         let catalog = strong.catalog();
-        for (id, status) in strong.slots.sweep_exited(&catalog) {
-            strong.voice.say(&format!(
-                "{id} exited on its own ({status}); its slot was emptied, and the \
-                 next request for it starts it again"
-            ));
-        }
+        strong.slots.sweep_exited(&catalog);
         for id in strong.slots.sweep_idle(&catalog, &strong.idle_window) {
             strong.voice.say(&format!(
                 "{id} unloaded after sitting idle past its configured window"

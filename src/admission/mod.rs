@@ -18,7 +18,10 @@
 //! read -- and the caller sees a stream stop early, which is indistinguishable
 //! from a model that finished.
 //!
-//! **The coldest candidate goes first.** When more than one could be unloaded,
+//! **Guests go first, and then the coldest.** A guest is a model loaded into
+//! free room, for a caller that would rather have been refused than cost
+//! another model its place, so it gives its room back before any model
+//! loaded without that promise. Among the guests, and then among the rest,
 //! the one that answered longest ago is chosen, because it is the one least
 //! likely to be asked for again in the next moment.
 //!
@@ -33,6 +36,8 @@
 
 mod budget;
 mod decision;
+#[cfg(test)]
+mod guests;
 mod room;
 mod subject;
 

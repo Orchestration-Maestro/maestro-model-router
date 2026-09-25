@@ -15,7 +15,8 @@ use super::subject::{Loaded, Wanted};
 pub enum Decision {
     /// There is room. Start it.
     Fits,
-    /// There is room once these are unloaded, coldest first.
+    /// There is room once these are unloaded, guests first and then the
+    /// coldest.
     Unload(Vec<String>),
     /// There is not yet, and what holds the room is on-demand and busy.
     ///
@@ -47,10 +48,34 @@ impl Budget {
     /// believes in and the device no longer has.
     ///
     /// The ceiling is inclusive: holding exactly the budget is within it.
+    ///
+    /// No loaded model is a guest here. [`Budget::admit_with_guests`] is the
+    /// same decision when some are.
     #[must_use]
     pub fn admit(
         &self,
         loaded: &[Loaded],
+        wanted: &Wanted,
+        device_free_mib: Option<u64>,
+    ) -> Decision {
+        self.admit_with_guests(loaded, &[], wanted, device_free_mib)
+    }
+
+    /// The decision [`Budget::admit`] makes, where `guests` names which of
+    /// `loaded` were loaded into free room.
+    ///
+    /// An idle guest is unloaded before any other model, the coldest guest
+    /// first, and only then the coldest of the rest. A guest being read from
+    /// is no more a candidate than any other busy model.
+    ///
+    /// A list beside `loaded` rather than a field on [`Loaded`], because
+    /// `Loaded` is built with a literal outside this crate, and a field added
+    /// to it would break every such literal.
+    #[must_use]
+    pub fn admit_with_guests(
+        &self,
+        loaded: &[Loaded],
+        guests: &[String],
         wanted: &Wanted,
         device_free_mib: Option<u64>,
     ) -> Decision {
@@ -92,7 +117,8 @@ impl Budget {
                 entry.residency == Residency::OnDemand && !entry.busy && entry.id != wanted.id
             })
             .collect();
-        candidates.sort_by_key(|entry| entry.last_used);
+        // `false` sorts first, so a guest comes before anything that is not.
+        candidates.sort_by_key(|entry| (!guests.contains(&entry.id), entry.last_used));
 
         let mut unload = Vec::new();
         for candidate in candidates {
@@ -129,7 +155,7 @@ impl Budget {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::time::Instant;
 
     use super::*;
@@ -139,7 +165,13 @@ mod tests {
     use std::time::Duration;
 
     /// A loaded entry, with the fields a case cares about named at the call.
-    fn loaded(id: &str, mib: u64, residency: Residency, busy: bool, age: u64) -> Loaded {
+    pub(in crate::admission) fn loaded(
+        id: &str,
+        mib: u64,
+        residency: Residency,
+        busy: bool,
+        age: u64,
+    ) -> Loaded {
         Loaded {
             id: id.to_owned(),
             cost_mib: mib,
@@ -155,7 +187,7 @@ mod tests {
         }
     }
 
-    fn on_demand(id: &str, mib: u64, age: u64) -> Loaded {
+    pub(in crate::admission) fn on_demand(id: &str, mib: u64, age: u64) -> Loaded {
         loaded(id, mib, Residency::OnDemand, false, age)
     }
 
@@ -380,7 +412,7 @@ mod tests {
     }
 
     /// What a case wants, at the given cost on both sides.
-    fn wanted(id: &str, mib: u64) -> Wanted {
+    pub(in crate::admission) fn wanted(id: &str, mib: u64) -> Wanted {
         Wanted {
             id: id.to_owned(),
             cost_mib: mib,

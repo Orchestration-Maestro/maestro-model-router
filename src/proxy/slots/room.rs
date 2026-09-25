@@ -28,6 +28,7 @@ use crate::admission::{Decision, Wanted};
 use crate::catalog::{Catalog, Entry};
 use crate::launch::{Failure, Server};
 
+use super::super::head::AllowedRoom;
 use super::admit::Asked;
 use super::lease::Lease;
 use super::queue::Queue;
@@ -52,11 +53,12 @@ impl Slots {
     ///
     /// # Errors
     ///
-    /// Returns a [`Failure::Refused`] when the entry cannot fit at all, and a
-    /// [`Failure::Contended`] when the wait expired with its room still held,
-    /// or the catalog was reloaded under it. The difference is what a caller
-    /// should do next, and the proxy carries it as a `Retry-After` on the ones
-    /// a retry can fix.
+    /// Returns a [`Failure::Refused`] when the entry cannot fit at all, or when
+    /// its caller allowed free room alone and loading it would need a model
+    /// unloaded, now or once a busy one is done; and a [`Failure::Contended`]
+    /// when the wait expired with its room still held, or the catalog was
+    /// reloaded under it. The difference is what a caller should do next, and
+    /// the proxy carries it as a `Retry-After` on the ones a retry can fix.
     pub(super) fn room_for<'a>(
         &'a self,
         mut queue: MutexGuard<'a, Queue>,
@@ -87,6 +89,13 @@ impl Slots {
             // operator's warm model and then answer 502, leaving neither.
             if let Err(failure) = Server::model_file(entry, root) {
                 break Err(failure);
+            }
+            // Without the header a dead child is a candidate like any other,
+            // and the unload the decision names takes it. A free-room request
+            // unloads nothing, so the dead child would refuse it for room
+            // nobody holds; the reaper empties it only under an idle window.
+            if asked.room == AllowedRoom::Free {
+                self.sweep_exited(catalog);
             }
             let held = match self.look(catalog, asked, queue.may_take(ticket)) {
                 Ok(Room::Made) => break Ok(None),
@@ -121,9 +130,12 @@ impl Slots {
         // that has actually happened: a child that has exited frees its pages
         // whether or not the ledger has caught up.
         let device_free_mib = self.budget.probe().device().map(|device| device.free_mib());
-        let decision = self
-            .budget
-            .admit(&self.held(catalog), &Wanted::of(entry), device_free_mib);
+        let decision = self.budget.admit_with_guests(
+            &self.held(catalog),
+            &self.guests(catalog),
+            &Wanted::of(entry),
+            device_free_mib,
+        );
         // Before the decision is acted on at all, joining the line included.
         if let Some(refusal) = asked.refusal(&decision) {
             return Err(refusal);

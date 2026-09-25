@@ -141,7 +141,7 @@ impl Slots {
             return Ok(child);
         }
 
-        let loaded = self.start(entry, server, root)?;
+        let loaded = self.start(asked, server, root)?;
         // The handed-out handle and the slot's own come into existence
         // together under the lock, which is the slot invariant in `loaded`.
         // The handle was bound before it is locked: the map's lock has to be

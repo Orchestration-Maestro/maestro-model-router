@@ -81,4 +81,13 @@ impl Slots {
             Held::of(entry, busy(&held.child), held.last_used, &held.measured)
         })
     }
+
+    /// Which loaded entries are guests, loaded into free room, in catalog
+    /// order: the ones admission unloads before any other.
+    pub(super) fn guests(&self, catalog: &Catalog) -> Vec<String> {
+        self.snapshot(catalog, |entry, held| held.guest.then(|| entry.id.clone()))
+            .into_iter()
+            .flatten()
+            .collect()
+    }
 }
