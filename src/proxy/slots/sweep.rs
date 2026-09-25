@@ -12,7 +12,7 @@ use crate::catalog::Catalog;
 use crate::idle::IdleWindow;
 
 use super::super::loaded::{Loaded, Slot, Take, take_if_exited, take_if_idle};
-use super::Slots;
+use super::table::Slots;
 
 impl Slots {
     /// Empties every slot whose child has exited on its own, and names each
@@ -70,9 +70,13 @@ impl Slots {
     /// An operator's sweep of one entry, taken the same way as the idle one,
     /// so a child that gained a reader since anybody looked is left to that
     /// reader rather than ended under it. The child is dropped once the
-    /// slot's guard is released, for the reason [`Slots::swept`] gives.
+    /// slot's guard is released, for the reason [`Slots::swept`] gives. An
+    /// entry with no slot left has nothing running.
     pub(in super::super) fn let_go(&self, id: &str) -> bool {
-        match take_if_idle(&self.slot(id), |_| true) {
+        let Some(handle) = self.slot(id) else {
+            return true;
+        };
+        match take_if_idle(&handle, |_| true) {
             Take::Taken(child) => drop(child),
             Take::Empty => {}
             Take::Busy => return false,
@@ -88,7 +92,7 @@ impl Slots {
     /// read: dropping a `Child` kills its process and waits for it, and a
     /// kill that hangs must stall this sweep and nothing else -- never a
     /// slot's guard, which every request for that entry and every listing
-    /// would wait behind.
+    /// would wait behind. An entry with no slot left has nothing to take.
     fn swept<T>(
         &self,
         ids: impl IntoIterator<Item = String>,
@@ -96,7 +100,7 @@ impl Slots {
     ) -> Vec<(String, T)> {
         ids.into_iter()
             .filter_map(|id| {
-                let handle = self.slot(&id);
+                let handle = self.slot(&id)?;
                 let (child, said) = take(&handle)?;
                 drop(child);
                 Some((id, said))
@@ -114,12 +118,14 @@ impl Slots {
     /// the slot's `Arc` at a count no sweep can take between the relay ending
     /// and this landing.
     ///
-    /// Does nothing if the slot has since been emptied, which is not an error:
-    /// nothing is left to stamp.
+    /// Does nothing if the slot has since been emptied, or dropped by a
+    /// reload, which is not an error: nothing is left to stamp.
     pub(in super::super) fn touch(&self, id: &str) {
         // Bound before it is locked, so the map's lock goes before the slot's
         // is taken -- the order every path in this module keeps.
-        let handle = self.slot(id);
+        let Some(handle) = self.slot(id) else {
+            return;
+        };
         if let Some(held) = handle
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

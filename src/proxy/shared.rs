@@ -8,13 +8,19 @@
 //! Re-reading the catalog lives here too, for the same reason: it is about
 //! what this router is serving rather than about any one request, and the
 //! endpoint that triggers it only turns the outcome into a reply.
+//!
+//! So does [`Stop`], the reaper's signal. `Shared` holds it and the reaper
+//! reads `Shared`, so defined in `reaper` it made the two modules name each
+//! other; here, the reaper names this module and nothing names it back.
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::sync::{Arc, Condvar, Mutex, PoisonError, RwLock};
+use std::time::Duration;
 
-use super::reaper::Stop;
-use super::slots::Slots;
+use super::access::Access;
+use super::listen::Permits;
+use super::slots::{Lease, Slots};
 use crate::catalog::{Catalog, Entry};
 use crate::idle::IdleWindow;
 use crate::launch::{Failure, Server};
@@ -25,6 +31,7 @@ use crate::launch::{Failure, Server};
 /// without the other once a catalog can be re-read: a parsed catalog with no
 /// source cannot be read again, and a path nothing has parsed has not been
 /// shown to be a catalog at all.
+#[derive(Debug)]
 pub struct Source {
     /// The catalog as it was parsed.
     pub catalog: Catalog,
@@ -58,15 +65,54 @@ pub(super) struct Shared {
     /// unloads it. `None` means the reaper is never spawned at all.
     pub(super) idle_window: IdleWindow,
     /// Who may use the router, checked before anything else is done.
-    pub(super) access: super::Access,
+    pub(super) access: Access,
     /// How long a caller may make no progress before it is given up on.
-    pub(super) stall: std::time::Duration,
+    pub(super) stall: Duration,
     /// How many connections are answered at once.
-    pub(super) permits: super::listen::Permits,
+    pub(super) permits: Permits,
     /// Wakes the reaper the moment [`Router::stop`] is called. See
-    /// [`reaper::Stop`] for why a `Weak<Shared>` alone is not enough: the
+    /// [`Stop`] for why a `Weak<Shared>` alone is not enough: the
     /// test harness never drops a `Router`, so nothing would ever end it.
     pub(super) stop: Stop,
+}
+
+/// Wakes the reaper the moment [`super::Router::stop`] is called, rather than
+/// leaving it to sleep blind until its next scheduled sweep.
+///
+/// A `Condvar` beside a `Mutex<bool>`, because a plain sleep cannot be
+/// interrupted and a `Weak` alone is never dropped in the harness that runs
+/// every test in this repository -- `serve` never returns, so nothing ever
+/// drops the `Arc<Shared>` the reaper is watching.
+pub(super) struct Stop {
+    flag: Mutex<bool>,
+    condvar: Condvar,
+}
+
+impl Stop {
+    pub(super) fn new() -> Self {
+        Self {
+            flag: Mutex::new(false),
+            condvar: Condvar::new(),
+        }
+    }
+
+    /// Sets the flag and wakes anything waiting on it.
+    pub(super) fn signal(&self) {
+        *self.flag.lock().unwrap_or_else(PoisonError::into_inner) = true;
+        self.condvar.notify_all();
+    }
+
+    /// Waits up to `timeout`, returning early the moment [`Stop::signal`] is
+    /// called elsewhere. The return says which one happened, so a caller can
+    /// tell "stop" from "the deadline arrived".
+    pub(super) fn wait(&self, timeout: Duration) -> bool {
+        let flag = self.flag.lock().unwrap_or_else(PoisonError::into_inner);
+        let (flag, _) = self
+            .condvar
+            .wait_timeout_while(flag, timeout, |signalled| !*signalled)
+            .unwrap_or_else(PoisonError::into_inner);
+        *flag
+    }
 }
 
 /// What a reload changed, so the reply can say rather than only succeed.
@@ -102,7 +148,7 @@ impl Shared {
     ///
     /// Returns a [`Failure`] when a child cannot be started, does not become
     /// ready, or is refused for want of room.
-    pub(super) fn child(&self, entry: &Entry) -> Result<super::slots::Lease<'_>, Failure> {
+    pub(super) fn child(&self, entry: &Entry) -> Result<Lease<'_>, Failure> {
         self.slots
             .child(&self.catalog(), entry, &self.server, &self.root)
     }
@@ -143,7 +189,11 @@ impl Shared {
 
         let previous = self.catalog();
         let names = |catalog: &Catalog| -> Vec<String> {
-            catalog.entries.iter().map(|e| e.id.clone()).collect()
+            catalog
+                .entries
+                .iter()
+                .map(|entry| entry.id.clone())
+                .collect()
         };
         let before = names(&previous);
         let after = names(&parsed);

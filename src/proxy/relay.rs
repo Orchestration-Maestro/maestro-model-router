@@ -15,7 +15,7 @@
 //! its mind would trade the property this slice exists for against a nicer
 //! message.
 
-use std::io::{BufReader, ErrorKind, Read, Write};
+use std::io::{self, BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -47,7 +47,7 @@ pub(super) fn run(
     body: Option<&[u8]>,
     reader: &mut BufReader<&TcpStream>,
     downstream: &TcpStream,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let endpoint = child.endpoint();
     let mut upstream = upstream_to(endpoint)?;
     upstream.write_all(head.rewrite(endpoint).as_bytes())?;
@@ -76,7 +76,7 @@ pub(super) fn run(
 /// back behind its own head for as long as the child delays that
 /// acknowledgement. A socket that will not take the setting is still a
 /// connection, and is used as one.
-fn upstream_to(endpoint: SocketAddr) -> std::io::Result<TcpStream> {
+fn upstream_to(endpoint: SocketAddr) -> io::Result<TcpStream> {
     let upstream = TcpStream::connect(endpoint)?;
     drop(upstream.set_nodelay(true));
     Ok(upstream)
@@ -91,19 +91,22 @@ fn forward_body(
     head: &Head,
     reader: &mut BufReader<&TcpStream>,
     upstream: &mut TcpStream,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let mut remaining = head.body_bytes();
     let mut buffer = [0u8; BUFFER];
     while remaining > 0 {
+        // All of the buffer, or as much of it as the body still has to fill.
+        // Neither `get` misses: `want` is at most the buffer's length, and a
+        // read never reports more than it was given room for.
         let want = remaining.min(BUFFER);
-        let read = reader.read(&mut buffer[..want])?;
+        let read = reader.read(buffer.get_mut(..want).unwrap_or_default())?;
         if read == 0 {
             // The caller declared more than it sent. The child is given what
             // arrived and decides for itself; guessing here would be this
             // router having an opinion about a body it does not read.
             break;
         }
-        upstream.write_all(&buffer[..read])?;
+        upstream.write_all(buffer.get(..read).unwrap_or_default())?;
         remaining -= read;
     }
     Ok(())
@@ -213,7 +216,10 @@ fn relay_response(mut upstream: &TcpStream, mut downstream: &TcpStream) {
             Ok(read) => read,
         };
 
-        if downstream.write_all(&buffer[..read]).is_err() || downstream.flush().is_err() {
+        // A read never reports more than it was given room for, so this
+        // `get` never misses.
+        let bytes = buffer.get(..read).unwrap_or_default();
+        if downstream.write_all(bytes).is_err() || downstream.flush().is_err() {
             // The caller hung up mid-answer. Returning drops the upstream
             // socket, which stops the child generating.
             return;
@@ -224,6 +230,7 @@ fn relay_response(mut upstream: &TcpStream, mut downstream: &TcpStream) {
 #[cfg(test)]
 mod tests {
     use std::net::TcpListener;
+    use std::sync::mpsc;
 
     use super::*;
 
@@ -250,14 +257,11 @@ mod tests {
         thread::spawn(move || {
             // Far more than any pair of socket buffers holds, so writes to a
             // caller that reads nothing block.
+            // The first write that fails ends them.
             let chunk = vec![b'x'; 1 << 20];
-            for _ in 0..512 {
-                if child.write_all(&chunk).is_err() {
-                    break;
-                }
-            }
+            drop((0..512).try_for_each(|_| child.write_all(&chunk)));
         });
-        let (done, finished) = std::sync::mpsc::channel();
+        let (done, finished) = mpsc::channel();
         thread::spawn(move || {
             copy_response(&upstream, &downstream);
             done.send(()).ok();
