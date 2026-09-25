@@ -1,76 +1,11 @@
-//! What the machine says about its memory, asked at run time.
-//!
-//! The budget is a ceiling on estimates, and an estimate is what somebody
-//! typed into a catalog. This module is the other source of truth: what the
-//! device reports as free before a model is started, and what a child turns
-//! out to hold once it has loaded. Neither replaces the catalog -- a figure
-//! nobody can read stays an estimate -- but where the machine can be asked,
-//! it is asked, and the answer is trusted over the guess.
-//!
-//! Everything here is fallible and everything degrades the same way: a tool
-//! that is missing, hangs, or prints something unreadable makes the figure
-//! *unknown*, never zero and never a panic. An unknown figure is what the
-//! router already lived with before this module existed.
-//!
-//! The probe is a value rather than a set of free functions so a test can
-//! state the numbers it means. [`Probe::Fixed`] answers with what it was
-//! built with; [`Probe::Machine`] runs the platform's tools. The router only
-//! ever holds one of these, and nothing that acts on a figure knows which.
+//! Where the machine's own figures come from: a test's fixed numbers, or the
+//! platform's tools, asked each time.
 
-mod command;
-mod parse;
+use std::path::PathBuf;
 
-/// What one machine's device memory looks like, in mebibytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DeviceMemory {
-    /// What every device the driver reports holds, together.
-    pub total_mib: u64,
-    /// What is in use right now, by anything on the machine.
-    pub used_mib: u64,
-}
-
-impl DeviceMemory {
-    /// What is left for a model to be started into.
-    #[must_use]
-    pub fn free_mib(&self) -> u64 {
-        self.total_mib.saturating_sub(self.used_mib)
-    }
-}
-
-/// What one child was found to hold once it had loaded, in mebibytes.
-///
-/// Either side may be unknown, independently: a machine without a device
-/// probe still has a resident set to read, and a platform where the device
-/// query prints nothing still reports the device's total.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Measurement {
-    /// The process's resident set, or `None` when it could not be read.
-    pub resident_mib: Option<u64>,
-    /// What the process holds on the device, or `None` when it could not be
-    /// read.
-    pub device_mib: Option<u64>,
-}
-
-impl Measurement {
-    /// Nothing could be read, which is what every child cost before this
-    /// module existed.
-    pub const UNKNOWN: Self = Self {
-        resident_mib: None,
-        device_mib: None,
-    };
-
-    /// The larger of the two sides, or `None` when neither is known.
-    ///
-    /// The larger rather than the sum, because weights mapped from a file
-    /// count in the resident set *and*, once copied to the device, on the
-    /// device -- so a sum would charge one model twice for the same bytes.
-    /// The larger side is what the model costs on the memory it mostly lives
-    /// in, which is what the budget's one number stands for.
-    #[must_use]
-    pub fn largest_mib(&self) -> Option<u64> {
-        self.resident_mib.into_iter().chain(self.device_mib).max()
-    }
-}
+use super::command;
+use super::figures::{DeviceMemory, Measurement};
+use super::parse;
 
 /// The figures a test states, in place of a machine.
 #[derive(Debug, Clone, Default)]
@@ -96,7 +31,7 @@ pub enum Probe {
 #[derive(Debug)]
 pub struct Machine {
     /// `nvidia-smi`, when the machine has one; where, so it is found once.
-    nvidia_smi: Option<std::path::PathBuf>,
+    nvidia_smi: Option<PathBuf>,
 }
 
 impl Probe {
@@ -157,6 +92,8 @@ impl Probe {
 
 #[cfg(test)]
 mod tests {
+    use std::process;
+
     use super::*;
 
     #[test]
@@ -173,7 +110,7 @@ mod tests {
             },
         });
 
-        assert_eq!(probe.device().map(|d| d.free_mib()), Some(3072));
+        assert_eq!(probe.device().map(|device| device.free_mib()), Some(3072));
         assert_eq!(probe.system_total_mib(), Some(16384));
         assert_eq!(probe.measure(1).largest_mib(), Some(700));
         assert_eq!(probe.measure(99_999).largest_mib(), Some(700));
@@ -187,22 +124,6 @@ mod tests {
         assert_eq!(probe.measure(1), Measurement::UNKNOWN);
     }
 
-    #[test]
-    fn the_largest_side_is_the_measurement_and_one_unknown_side_does_not_hide_the_other() {
-        let both = Measurement {
-            resident_mib: Some(4600),
-            device_mib: Some(725),
-        };
-        assert_eq!(both.largest_mib(), Some(4600));
-
-        let device_only = Measurement {
-            resident_mib: None,
-            device_mib: Some(725),
-        };
-        assert_eq!(device_only.largest_mib(), Some(725));
-        assert_eq!(Measurement::UNKNOWN.largest_mib(), None);
-    }
-
     /// The real probe against this test's own process: the one measurement
     /// that can be taken on any machine the tests run on.
     ///
@@ -212,7 +133,7 @@ mod tests {
     #[test]
     fn the_machine_probe_measures_this_process_or_says_it_cannot() {
         let probe = Probe::detect();
-        let measured = probe.measure(std::process::id());
+        let measured = probe.measure(process::id());
 
         if cfg!(unix) {
             assert!(

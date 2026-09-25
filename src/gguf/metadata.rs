@@ -1,53 +1,15 @@
-//! What a model file says about itself.
+//! The metadata a model file carries, read into the keys the router keeps.
 //!
-//! A GGUF file begins with its metadata: a magic, a version, two counts, then
-//! typed key-value pairs, and only after all of that the tensors. Everything
-//! the router wants to know about a model before loading it -- how many
-//! layers it has, how wide its attention is, how much context it was trained
-//! for, whether it is one shard of several -- sits in those pairs, so this
-//! reads them and stops.
-//!
-//! Three things are part of the contract rather than the implementation.
-//!
-//! Nothing here allocates on the file's say-so. A length is stepped over, not
-//! read into memory, unless the value is one of the handful this keeps; so a
-//! file claiming a terabyte-long string costs a seek past the end of the file
-//! and a fault, never that much memory. The router reads files it did not
-//! write, and a corrupt download must not take it down.
-//!
-//! A per-layer setting reads as its largest value. Some architectures vary
-//! the key-value head count by layer and store an array; the cache is sized
-//! for the worst layer, so the largest is the honest figure and an average
-//! would undercount.
-//!
-//! A key the file does not carry is absent, never zero. Zero layers or zero
-//! heads would make an estimate of nothing, which is the one figure a caller
-//! must never be handed by mistake.
-//!
-//! Versions 2 and 3 are read; they lay their metadata out identically. Version
-//! 1 used narrower lengths and predates every file the router will meet.
+//! This decides which values are worth keeping and hands the reading of each
+//! value's bytes to the module beside it.
 
 use std::collections::BTreeMap;
-use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
-mod bytes;
-
-use bytes::{Reader, scalar_at, skip, text_at, u32_at, u64_at, width};
-
-/// Why a file could not be read as GGUF metadata.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fault(String);
-
-impl fmt::Display for Fault {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for Fault {}
+use super::bytes::{Reader, scalar_at, skip, text_at, u32_at, u64_at, width};
+use super::fault::Fault;
 
 /// The most pairs a file may declare. Real files carry a few dozen; a count
 /// past this is a corrupt header, not a large model.
@@ -202,25 +164,7 @@ impl Metadata {
             || key.ends_with(".attention.head_count")
             || key.ends_with(".attention.sliding_window_pattern");
         if per_layer && kind != STRING && kind != ARRAY {
-            if count > MAX_LAYER_ARRAY {
-                return Err(Fault(format!("'{key}' claims {count} layers")));
-            }
-            let mut largest = None;
-            let mut elements = Vec::new();
-            for _ in 0..count {
-                let element = scalar_at(reader, kind)?;
-                largest = largest.max(element);
-                if let Some(element) = element {
-                    elements.push(element);
-                }
-            }
-            if let Some(largest) = largest {
-                self.numbers.insert(key.to_owned(), largest);
-            }
-            if !elements.is_empty() {
-                self.layers.insert(key.to_owned(), elements);
-            }
-            return Ok(());
+            return self.layer_array(reader, key, kind, count);
         }
         match kind {
             STRING => {
@@ -235,6 +179,34 @@ impl Metadata {
                     .ok_or_else(|| Fault(format!("'{key}' claims an impossible length")))?;
                 skip(reader, bytes)?;
             }
+        }
+        Ok(())
+    }
+
+    /// A per-layer array of `count` scalars of `kind`: kept in file order, and
+    /// its largest element kept as the key's number.
+    fn layer_array(
+        &mut self,
+        reader: &mut Reader,
+        key: &str,
+        kind: u32,
+        count: u64,
+    ) -> Result<(), Fault> {
+        if count > MAX_LAYER_ARRAY {
+            return Err(Fault(format!("'{key}' claims {count} layers")));
+        }
+        let mut largest = None;
+        let mut elements = Vec::new();
+        for _ in 0..count {
+            let element = scalar_at(reader, kind)?;
+            largest = largest.max(element);
+            elements.extend(element);
+        }
+        if let Some(largest) = largest {
+            self.numbers.insert(key.to_owned(), largest);
+        }
+        if !elements.is_empty() {
+            self.layers.insert(key.to_owned(), elements);
         }
         Ok(())
     }

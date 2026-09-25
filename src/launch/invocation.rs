@@ -189,11 +189,11 @@ mod tests {
     fn an_omitted_location_is_absent_rather_than_empty() {
         let line = line(&entry());
         assert!(
-            !line.iter().any(|a| a == "--model-draft"),
+            !line.iter().any(|argument| argument == "--model-draft"),
             "no draft model, so no flag at all:\n{line:?}"
         );
         assert!(
-            !line.iter().any(|a| a == "--mmproj"),
+            !line.iter().any(|argument| argument == "--mmproj"),
             "no projector, so no flag at all:\n{line:?}"
         );
     }
@@ -219,10 +219,10 @@ mod tests {
     fn reasoning_settings_appear_only_when_the_entry_sets_them() {
         let bare = line(&entry());
         assert!(
-            !bare.iter().any(|a| a == "--reasoning-format"),
+            !bare.iter().any(|argument| argument == "--reasoning-format"),
             "a model that does not reason carries neither:\n{bare:?}"
         );
-        assert!(!bare.iter().any(|a| a == "--reasoning-effort"));
+        assert!(!bare.iter().any(|argument| argument == "--reasoning-effort"));
 
         let mut entry = entry();
         entry.reasoning_format = Some("deepseek".to_owned());
@@ -243,11 +243,11 @@ mod tests {
         let line = line(&entry);
 
         assert!(
-            line.iter().any(|a| a == "--jinja"),
+            line.iter().any(|argument| argument == "--jinja"),
             "true means the flag on its own:\n{line:?}"
         );
         assert!(
-            !line.iter().any(|a| a == "true"),
+            !line.iter().any(|argument| argument == "true"),
             "and never the word as a value:\n{line:?}"
         );
     }
@@ -260,11 +260,11 @@ mod tests {
         let line = line(&entry);
 
         assert!(
-            line.iter().any(|a| a == "--no-mmap"),
+            line.iter().any(|argument| argument == "--no-mmap"),
             "false negates the flag:\n{line:?}"
         );
         assert!(
-            line.iter().any(|a| a == "--no-fa"),
+            line.iter().any(|argument| argument == "--no-fa"),
             "and negation is spelled from the key as written, not its long \
              form, which is what the current router sends:\n{line:?}"
         );
@@ -320,7 +320,7 @@ mod tests {
 
         assert!(has_pair(&line, "--flash-attn", "on"), "{line:?}");
         assert!(
-            !line.iter().any(|a| a == "--no-fa"),
+            !line.iter().any(|argument| argument == "--no-fa"),
             "'on' is not falsehood:\n{line:?}"
         );
     }

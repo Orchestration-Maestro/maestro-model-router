@@ -1,22 +1,22 @@
 //! The format's primitives: fixed-width integers, strings, and stepping over
 //! what is not kept.
 //!
-//! Split from the module above it along the seam the size gate exposed: that
-//! module decides which values are worth keeping, and this reads one value's
-//! bytes without caring what it is for. Every function here takes the reader
+//! Split from the metadata reader beside it along the seam the size gate
+//! exposed: that module decides which values are worth keeping, and this
+//! reads one value's bytes without caring what it is for. Every function here takes the reader
 //! and hands back one value or steps past it; none of them knows a key name.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{self, BufReader, Read};
 
-use super::Fault;
+use super::fault::Fault;
 
 pub(super) type Reader = BufReader<File>;
 
 /// A read that ended inside a value, which is what every I/O failure past
 /// the open amounts to.
-impl From<std::io::Error> for Fault {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for Fault {
+    fn from(error: io::Error) -> Self {
         Self(format!("ends inside its metadata: {error}"))
     }
 }
@@ -54,10 +54,13 @@ pub(super) fn width(kind: u32) -> Result<u64, Fault> {
 /// `None` when it is a float, a flag, or negative.
 pub(super) fn scalar_at(reader: &mut Reader, kind: u32) -> Result<Option<u64>, Fault> {
     let mut bytes = [0u8; 8];
-    // Never more than eight, so the conversion cannot fail; written as one so
-    // no cast has to be vouched for.
+    // Never more than eight, so neither the conversion nor the slice can fail;
+    // written as lookups so no cast and no index has to be vouched for.
     let taken = usize::try_from(width(kind)?).unwrap_or(8);
-    reader.read_exact(&mut bytes[..taken])?;
+    let held = bytes
+        .get_mut(..taken)
+        .ok_or_else(|| Fault(format!("value type {kind} is wider than eight bytes")))?;
+    reader.read_exact(held)?;
     Ok(unsigned(kind, bytes))
 }
 

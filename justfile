@@ -9,7 +9,9 @@
 # Derived, never hardcoded: `home_directory()` resolves on Windows, macOS and
 # Linux alike, and the separator follows the OS rather than assuming Unix.
 path_sep := if os_family() == "windows" { ";" } else { ":" }
-export PATH := home_directory() / ".cargo" / "bin" + path_sep + home_directory() / ".local" / "bin" + path_sep + env('PATH')
+cargo_bin := home_directory() / ".cargo" / "bin"
+local_bin := home_directory() / ".local" / "bin"
+export PATH := cargo_bin + path_sep + local_bin + path_sep + env('PATH')
 
 # The service unit that runs the router, for the recipes that act on it.
 #
@@ -54,7 +56,8 @@ setup:
 # Run the quality gates CI runs.
 check:
     cargo fmt --all --check
-    cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::todo -D clippy::dbg_macro -D unsafe_code
+    cargo clippy --workspace --all-targets --locked -- \
+        -D warnings -D clippy::todo -D clippy::dbg_macro -D unsafe_code
     cargo test --workspace --all-targets --locked
     cargo test --workspace --doc --locked
     RUSTDOCFLAGS='-D warnings -D missing_docs' cargo doc --workspace --no-deps --locked
