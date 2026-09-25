@@ -61,6 +61,17 @@ fn a_hybrid_model_caches_only_its_full_attention_layers() {
     );
 }
 
+#[test]
+fn an_interval_of_zero_is_read_as_every_layer_caching() {
+    // Zero cannot mean "one layer in every zero". Read as a divisor it would
+    // end the process; read as the value a file that means nothing by it
+    // writes, it leaves every layer keeping a cache, the dense reading.
+    assert_eq!(
+        estimated("catalog-interval-zero", &layered(Some(0))),
+        estimated("catalog-interval-none", &layered(None)),
+    );
+}
+
 /// A model of thirty layers, optionally declaring that most of them attend
 /// only to a window rather than to the whole context.
 ///
@@ -105,6 +116,15 @@ fn a_sliding_window_layer_caches_its_window_not_the_whole_context() {
         "a windowed model must cost far less than the same model attending \
          fully on every layer: dense {dense} MiB, sliding {sliding} MiB"
     );
+    // By hand, in bytes per layer: a full one holds 1024 tokens x 2 heads x
+    // (128 + 128) x 2 bytes, which is 1 MiB, and a windowed one 64 x 2 x
+    // (64 + 64) x 2, which is 1/32 of that. Five and twenty-five of them are
+    // 5.78 MiB, beside 64 MiB of weights, 3.2 of fragmentation and 1024 of
+    // overhead: 1096.98 MiB, rounded up.
+    assert_eq!(
+        sliding, 1097,
+        "each layer costed at its own span, heads and widths"
+    );
 }
 
 /// A model of twenty-six layers that says it slides, without saying which
@@ -144,6 +164,16 @@ fn a_window_an_architecture_does_not_spell_out_is_still_a_window() {
         dense - sliding >= 18,
         "a model that declares a window without a pattern must still be \
          costed at its window: dense {dense} MiB, sliding {sliding} MiB"
+    );
+    // By hand: a full layer holds 1024 tokens x 1 head x (256 + 256) x 2
+    // bytes, which is 1 MiB, and a windowed one 64 tokens of the same, 1/16
+    // of that. Four and twenty-two of them are 5.375 MiB, beside 64 MiB of
+    // weights, 3.2 of fragmentation and 1024 of overhead: 1096.575 MiB,
+    // rounded up. The four are layers 6, 12, 18 and 24, the last of each run
+    // of six.
+    assert_eq!(
+        sliding, 1097,
+        "the pattern the loader assumes, one full layer in every six"
     );
 }
 
