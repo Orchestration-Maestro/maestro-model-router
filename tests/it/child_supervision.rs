@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 
 use maestro_model_router::catalog::{Entry, RelativePath, Residency};
 use maestro_model_router::launch::{Failure, Liveness, Server};
+use maestro_model_router::memory::Probe;
 
 use crate::support::poll::eventually;
 use crate::support::{ModelsRoot, health, stub_binary};
@@ -250,6 +251,29 @@ fn stopping_a_child_terminates_it_and_check_reports_the_exit() {
         matches!(child.check(), Liveness::Exited(_)),
         "and gone afterwards, reaped rather than left as a zombie"
     );
+}
+
+/// The pid is how the machine is asked what a child holds once it has
+/// loaded, so it names that child: measured while it runs, and gone once it
+/// is stopped. Elsewhere than the Unix platforms a resident set may
+/// legitimately be unknown, so only its absence is asserted everywhere.
+#[test]
+fn a_childs_pid_is_the_process_the_machine_measures_until_it_stops() {
+    let root = ModelsRoot::with(&[MODEL]);
+    let mut child = server()
+        .start(&entry("gemma3"), root.path())
+        .expect("the stub becomes ready");
+    let probe = Probe::detect();
+    let pid = child.pid();
+
+    let running = probe.measure(pid).resident_mib;
+    child.stop();
+    let stopped = probe.measure(pid).resident_mib;
+
+    if cfg!(unix) {
+        assert!(running.is_some(), "pid {pid} measures while it runs");
+    }
+    assert_eq!(stopped, None, "pid {pid} is gone once the child is stopped");
 }
 
 #[test]

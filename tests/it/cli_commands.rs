@@ -97,6 +97,29 @@ fn check_without_a_models_root_says_it_checked_the_shape_only() {
 }
 
 #[test]
+fn check_without_a_configured_root_reads_models_under_the_home_directory() {
+    let home = ModelsRoot::with(&[&format!("models/{MODEL}")]);
+    let catalog = written(&home, &catalog_text(""));
+
+    // Run from inside that root, where a `models` directory relative to the
+    // working directory is not there, so only the home directory finds it.
+    let output = Command::new(env!("CARGO_BIN_EXE_model-router"))
+        .args(["check", &catalog])
+        .current_dir(home.path().join("models"))
+        .env_remove("MAESTRO_MODELS_ROOT")
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .output()
+        .expect("the router binary is built by cargo test");
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert!(
+        text(&output.stdout).contains("is valid: 1 models, 1 declared and 0 found under the root"),
+        "read against 'models' under the home directory:\n{}",
+        text(&output.stdout)
+    );
+}
+
+#[test]
 fn check_names_every_problem_of_an_unusable_catalog_not_only_the_first() {
     let root = ModelsRoot::with(&[MODEL]);
     let catalog = written(
