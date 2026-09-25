@@ -8,9 +8,10 @@
 //! string `id` and a string `status.value`, or it reports that the server is
 //! not running in router mode.
 
+use maestro_model_router::memory::{Fixed, Measurement, Probe};
 use serde_json::Value;
 
-use crate::support::{MODEL, ModelsRoot, get, request, serving, status};
+use crate::support::{MODEL, ModelsRoot, get, probed, request, serving, status};
 
 /// Two entries, so a catalogue has something to distinguish.
 const CATALOG: &str = concat!(
@@ -107,6 +108,33 @@ fn an_entry_carries_what_it_was_estimated_to_hold_and_what_it_held() {
     assert_eq!(
         after["data"][0]["memory"]["declared_mib"], 512,
         "beside the estimate, which is what makes a drifted one visible:\n{after}"
+    );
+}
+
+#[test]
+fn a_loaded_entry_carries_the_figure_it_was_measured_at() {
+    // A machine on which every child measures at 700 MiB resident, so the
+    // figure can only have come from the measurement, not the 512 declared.
+    let serving = probed(
+        CATALOG,
+        ModelsRoot::with(&[MODEL]),
+        None,
+        Probe::Fixed(Fixed {
+            device: None,
+            system_total_mib: None,
+            measurement: Measurement {
+                resident_mib: Some(700),
+                device_mib: None,
+            },
+        }),
+    );
+
+    request(serving.address(), &get("/models/gemma3/v1/echo"));
+    let after = body(&request(serving.address(), &get("/models")));
+
+    assert_eq!(
+        after["data"][0]["memory"]["held_mib"], 700,
+        "the loaded entry's own measurement, beside its estimate:\n{after}"
     );
 }
 

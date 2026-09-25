@@ -182,6 +182,8 @@ impl Router {
 #[cfg(test)]
 mod tests {
     use std::env;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpStream;
     use std::time::Duration;
 
     use super::*;
@@ -240,6 +242,33 @@ mod tests {
             addresses.iter().all(|address| address.port() != 0),
             "each is the port assigned, not the zero asked for: {addresses:?}"
         );
+    }
+
+    #[test]
+    fn a_served_router_answers_on_every_address_it_bound() {
+        let router = bound_twice();
+        let addresses = router.addresses();
+        thread::spawn(move || router.serve());
+
+        for address in addresses {
+            let mut stream = TcpStream::connect(address).expect("a bound port");
+            // The deadline is the assertion. A port nobody accepts on still
+            // takes the connection into the kernel's backlog, so a router
+            // that stopped accepting is a reply that never comes.
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("a read timeout");
+            stream
+                .write_all(b"GET /v1/models HTTP/1.1\r\nHost: router\r\nConnection: close\r\n\r\n")
+                .expect("a request");
+            let mut reply = String::new();
+            drop(stream.read_to_string(&mut reply));
+
+            assert!(
+                reply.starts_with("HTTP/1.1 200 "),
+                "{address} answered the listing:\n{reply}"
+            );
+        }
     }
 
     #[test]

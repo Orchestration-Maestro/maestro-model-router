@@ -236,6 +236,9 @@ pub(super) fn proceed(mut stream: &TcpStream) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
 
     #[test]
     fn every_status_a_cause_carries_has_a_reason_phrase_of_its_own() {
@@ -260,5 +263,105 @@ mod tests {
             );
         }
         assert_eq!(reason(Cause::StartupTimeout.status()), "Gateway Timeout");
+    }
+
+    #[test]
+    fn the_answers_the_router_authors_carry_their_own_reason_phrases() {
+        // No cause carries these: they are the listing's status and the
+        // preflight's, and a client that reads the phrase would take either
+        // for a gateway that gave up.
+        assert_eq!(reason(200), "OK");
+        assert_eq!(reason(204), "No Content");
+    }
+
+    /// Both ends of one loopback connection: the router's, and its caller's.
+    fn connection() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let caller =
+            TcpStream::connect(listener.local_addr().expect("its address")).expect("a caller");
+        let (router, _) = listener.accept().expect("the connection, accepted");
+        (router, caller)
+    }
+
+    #[test]
+    fn a_refused_caller_that_finishes_sending_is_read_to_its_end() {
+        // More than one read of the drain's buffer, and less than the bound,
+        // so a drain that stopped after a read or two leaves bytes behind --
+        // and a socket closed on unread bytes is the reset this exists to
+        // prevent.
+        let (router, mut caller) = connection();
+        let sending = thread::spawn(move || {
+            caller
+                .write_all(&vec![b'x'; 32 * 1024])
+                .expect("the rest of a request");
+            caller
+                .shutdown(Shutdown::Write)
+                .expect("the caller's side, ended");
+            caller
+        });
+
+        linger(&router);
+        let _caller = sending.join().expect("the caller sent everything");
+
+        router
+            .set_nonblocking(true)
+            .expect("a read that cannot wait");
+        assert_eq!(
+            (&router).read(&mut [0u8; 16]).ok(),
+            Some(0),
+            "everything the caller sent was read, and the end after it"
+        );
+    }
+
+    #[test]
+    fn a_drain_that_reached_its_bound_stops_without_waiting_for_more() {
+        // Exactly the bound, sent by a caller that then stays connected and
+        // silent. A drain that did not stop at the bound would wait on it
+        // until its deadline, which is a second of a thread for nothing.
+        let (router, mut caller) = connection();
+        let (finished, done) = mpsc::channel::<()>();
+        let sending = thread::spawn(move || {
+            caller
+                .write_all(&vec![b'x'; LINGER_BYTES])
+                .expect("the bound's worth");
+            // Held open until the drain has returned, so the only way it can
+            // end sooner than its deadline is the bound.
+            done.recv().ok();
+        });
+
+        let started = Instant::now();
+        linger(&router);
+        let took = started.elapsed();
+        finished.send(()).ok();
+        sending.join().expect("the caller sent the bound's worth");
+
+        assert!(
+            took < LINGER / 2,
+            "a drain that took all it may take stops there, rather than \
+             waiting out its deadline: took {took:?}"
+        );
+    }
+
+    #[test]
+    fn a_caller_that_keeps_sending_is_given_up_on_at_the_deadline() {
+        // A trickle: never enough to reach the bound, never a pause long
+        // enough for the read to time out, and never an end. Only the
+        // deadline stops a drain of this.
+        let (router, mut caller) = connection();
+        let (finished, done) = mpsc::channel::<()>();
+        thread::spawn(move || {
+            while done.recv_timeout(Duration::from_millis(50)).is_err()
+                && caller.write_all(b"x").is_ok()
+            {}
+        });
+        let (drained, ended) = mpsc::channel();
+        thread::spawn(move || {
+            linger(&router);
+            drained.send(()).ok();
+        });
+
+        let outcome = ended.recv_timeout(LINGER * 5);
+        finished.send(()).ok();
+        outcome.expect("a caller that keeps sending is let go of at the deadline");
     }
 }

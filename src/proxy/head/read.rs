@@ -135,6 +135,21 @@ mod tests {
     }
 
     #[test]
+    fn a_head_just_within_the_byte_bound_is_read() {
+        // Sixty-four kibibytes to the byte, blank line included: far past what
+        // a request line and a dozen headers need, which is what the bound is
+        // generous for. Stated as a number rather than read back from the
+        // constant, so a bound that shrank is a head this refuses.
+        let line = "GET /models/gemma3/v1/models HTTP/1.1\r\n";
+        let padding = "x".repeat(64 * 1024 - line.len() - "X-Big: \r\n\r\n".len());
+        let mut source = Cursor::new(format!("{line}X-Big: {padding}\r\n\r\n").into_bytes());
+
+        let head = read(&mut source).expect("a head the bound admits");
+
+        assert_eq!(head.len(), 2, "the request line and the one header");
+    }
+
+    #[test]
     fn more_headers_than_the_bound_are_refused() {
         let mut text = String::from("GET /models/gemma3/v1/models HTTP/1.1\r\n");
         for index in 0..=MAX_HEADERS {
