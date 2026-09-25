@@ -196,7 +196,46 @@ const fn leap(year: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
     use super::*;
+
+    /// Runs `work` on a thread of its own and gives it five seconds, so that a
+    /// calendar loop which never ends fails its test rather than hanging the
+    /// whole run.
+    fn promptly<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || sender.send(work()));
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("finished within five seconds")
+    }
+
+    #[test]
+    fn a_measurement_that_disagrees_with_its_estimate_is_written_out_to_paste() {
+        let reading = Measurement {
+            id: "gemma3".to_owned(),
+            declared_mib: 512,
+            measured_mib: Some(1000),
+            load: Duration::ZERO,
+            throughput: None,
+        };
+        let out = promptly(move || {
+            let mut out = Vec::new();
+            recommendations(&[reading], &mut out).map(|()| out)
+        })
+        .expect("a vector takes every write");
+        let said = String::from_utf8(out).expect("written as text");
+        assert!(
+            said.contains("[models.gemma3]")
+                && said.contains("Was 512 MiB")
+                && said.contains("memory_estimate_mib = 1280"),
+            "the entry, what it declared, and a twentieth over 1000 MiB rounded \
+             to a quarter gibibyte:\n{said}"
+        );
+    }
 
     #[test]
     fn a_leap_year_is_every_fourth_except_centuries_not_divisible_by_four_hundred() {
@@ -208,17 +247,23 @@ mod tests {
 
     #[test]
     fn seconds_since_the_epoch_land_on_their_calendar_date() {
-        // Hand-checked instants: the epoch itself, a leap day, the first day
-        // after a century that was not a leap year, and a recent date.
-        assert_eq!(date_of(0), "1970-01-01");
-        assert_eq!(date_of(951_782_400), "2000-02-29");
-        assert_eq!(date_of(4_107_542_400), "2100-03-01");
-        assert_eq!(date_of(1_790_208_000), "2026-09-24");
+        // Hand-checked instants: the epoch itself, the first day of the next
+        // year, a leap day, the first day after a century that was not a leap
+        // year, and a recent date.
+        for (seconds, date) in [
+            (0, "1970-01-01"),
+            (31_536_000, "1971-01-01"),
+            (951_782_400, "2000-02-29"),
+            (4_107_542_400, "2100-03-01"),
+            (1_790_208_000, "2026-09-24"),
+        ] {
+            assert_eq!(promptly(move || date_of(seconds)), date);
+        }
     }
 
     #[test]
     fn today_is_the_date_the_clock_gives() {
-        let today = today();
+        let today = promptly(today);
         assert!(
             today.len() == 10 && today.as_str() >= "2026-09-24",
             "a date, and none earlier than this test: {today:?}"
