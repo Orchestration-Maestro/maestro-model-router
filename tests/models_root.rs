@@ -9,6 +9,8 @@
 //! environment instead is `unsafe` in Rust 2024 and races every other test in
 //! the binary, so no case here touches it.
 
+#![cfg(test)]
+
 use std::path::PathBuf;
 
 use maestro_model_router::launch::models_root_from;

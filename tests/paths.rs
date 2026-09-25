@@ -9,6 +9,8 @@
 //! This ran in the old estate's shared workflow, which no longer exists; it
 //! lives here now so the rule in `AGENTS.md` keeps a check behind it.
 
+#![cfg(test)]
+
 use std::fs;
 
 mod common;

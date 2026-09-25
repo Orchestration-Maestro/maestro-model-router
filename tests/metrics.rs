@@ -5,6 +5,8 @@
 //! a graph can show what was loaded when the machine ran short -- which is
 //! the question the journal answered only for whoever read it at the time.
 
+#![cfg(test)]
+
 mod support;
 use support::{MODEL, ModelsRoot, budgeted, catalog_text, get, post, request, serving, status};
 

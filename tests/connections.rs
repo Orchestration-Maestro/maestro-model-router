@@ -9,6 +9,8 @@
 //! reason a request whose room is held waits for it: a router that queues
 //! does not make every caller write a retry loop.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::thread::sleep;

@@ -11,6 +11,8 @@
 //! shared gate scans tracked files, and this proves the type refuses one at
 //! run time too.
 
+#![cfg(test)]
+
 use maestro_model_router::catalog::{Catalog, RelativePath, Residency};
 use std::path::Path;
 

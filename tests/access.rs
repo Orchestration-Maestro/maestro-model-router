@@ -8,6 +8,8 @@
 //! drive. Both are read through `Access::from_variables`, so no test changes
 //! the process environment.
 
+#![cfg(test)]
+
 use maestro_model_router::proxy::Access;
 
 mod support;

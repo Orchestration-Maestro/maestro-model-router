@@ -11,6 +11,8 @@
 //! its binary, and one that measured would assert about the machine it
 //! happened to run on.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::thread::sleep;

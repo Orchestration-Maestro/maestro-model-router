@@ -6,6 +6,8 @@
 //! as long as it stayed. Both now have as long as the router's stall allows,
 //! and no longer.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};

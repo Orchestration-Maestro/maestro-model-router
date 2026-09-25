@@ -12,6 +12,8 @@
 //! `--ready-after`, so a test asks for a slow start using the same mechanism
 //! a catalog uses to ask for anything else.
 
+#![cfg(test)]
+
 use std::collections::BTreeMap;
 use std::thread::sleep;
 use std::time::{Duration, Instant};

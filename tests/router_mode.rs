@@ -8,6 +8,8 @@
 //! string `id` and a string `status.value`, or it reports that the server is
 //! not running in router mode.
 
+#![cfg(test)]
+
 use serde_json::Value;
 
 mod support;

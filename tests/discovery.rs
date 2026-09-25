@@ -7,6 +7,8 @@
 //! alone, and what it calls the entries it makes -- and then prove that one
 //! of them answers through the router like any entry written by hand.
 
+#![cfg(test)]
+
 use maestro_model_router::catalog::{Catalog, EstimateSource, Reading, Residency};
 
 mod fixtures;

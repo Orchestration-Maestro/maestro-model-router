@@ -10,6 +10,8 @@
 //! `streaming.rs`. A failure here means routing; a failure there means the
 //! relay.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::thread::sleep;

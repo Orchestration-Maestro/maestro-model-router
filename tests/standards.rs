@@ -1,5 +1,7 @@
 //! Size limits. A test, not a promise.
 
+#![cfg(test)]
+
 use std::fs;
 use std::path::Path;
 

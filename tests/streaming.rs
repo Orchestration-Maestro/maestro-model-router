@@ -11,6 +11,8 @@
 //! slice was written -- so a duration assertion would pass against the design
 //! this slice rejects.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;

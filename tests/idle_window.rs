@@ -7,6 +7,8 @@
 //! variable's value as an argument. Changing the process environment instead
 //! is `unsafe` in Rust 2024 and races every other test in the binary.
 
+#![cfg(test)]
+
 use maestro_model_router::idle::IdleWindow;
 
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";

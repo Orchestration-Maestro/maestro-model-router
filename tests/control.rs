@@ -11,6 +11,8 @@
 //! `{"model": ...}` -- so a llama.cpp client that offers those buttons works
 //! against this router as it does against that one.
 
+#![cfg(test)]
+
 use std::io::Write;
 use std::net::TcpStream;
 

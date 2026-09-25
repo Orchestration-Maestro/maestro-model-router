@@ -22,6 +22,8 @@
 //! catalog says 262144 and the process serving it was started at 131072" is a
 //! thing an operator has to be told rather than left to discover.
 
+#![cfg(test)]
+
 use serde_json::Value;
 
 mod support;

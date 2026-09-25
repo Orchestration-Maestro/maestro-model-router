@@ -5,6 +5,8 @@
 //! and the link quietly points at nothing. This resolves every
 //! repository-relative Markdown link and asserts its target exists.
 
+#![cfg(test)]
+
 use std::fs;
 use std::path::Path;
 

@@ -10,6 +10,8 @@
 //! Observed through eviction: with room for one model, a second model can be
 //! loaded only once the first is no longer busy.
 
+#![cfg(test)]
+
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};

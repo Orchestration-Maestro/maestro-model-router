@@ -13,6 +13,8 @@
 //! times slower than Linux. What a real load costs belongs to the manual
 //! verification, not here.
 
+#![cfg(test)]
+
 mod support;
 use support::{MODEL, ModelsRoot, budgeted, get, post, request, serving, settled, status};
 

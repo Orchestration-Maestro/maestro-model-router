@@ -8,6 +8,8 @@
 //! that means what the specification says, a JSON envelope with a stable
 //! code, and a `Retry-After` exactly when retrying can change the answer.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;

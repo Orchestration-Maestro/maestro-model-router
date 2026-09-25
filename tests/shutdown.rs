@@ -11,6 +11,7 @@
 //! reaches every process attached to the test's own console, this one
 //! included, and a process started with its own console cannot be reached at
 //! all. The Windows leg still compiles this crate to nothing and runs the rest.
+#![cfg(test)]
 #![cfg(unix)]
 
 mod support;

@@ -12,6 +12,8 @@
 //! between a router that queues and one that makes every caller write a retry
 //! loop.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};

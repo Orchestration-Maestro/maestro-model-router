@@ -10,6 +10,8 @@
 //! asking the real machine made the answer depend on whichever machine ran
 //! the tests, and on whether its tools answered in time.
 
+#![cfg(test)]
+
 use maestro_model_router::admission::Budget;
 use maestro_model_router::memory::{DeviceMemory, Fixed, Probe};
 

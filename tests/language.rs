@@ -5,6 +5,8 @@
 //! without any language detection. It will not catch French written without
 //! accents, which is the accepted limit of a cheap check.
 
+#![cfg(test)]
+
 use std::fs;
 
 mod common;

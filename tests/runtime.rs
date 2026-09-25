@@ -15,6 +15,7 @@
 //! with its own search path, rather than changing this process's `PATH`:
 //! that is `unsafe` in Rust 2024 and changes it for every test beside it.
 
+#![cfg(test)]
 #![cfg(unix)]
 
 use std::fs;

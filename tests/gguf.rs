@@ -6,6 +6,8 @@
 //! that a file lying about its lengths cannot make the router allocate its way
 //! into trouble.
 
+#![cfg(test)]
+
 use maestro_model_router::gguf::Metadata;
 
 mod fixtures;

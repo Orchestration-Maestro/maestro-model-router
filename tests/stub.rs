@@ -6,6 +6,8 @@
 //! observed rather than assumed, and a requested exit really happens with the
 //! requested code.
 
+#![cfg(test)]
+
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::process::{Child, Command};

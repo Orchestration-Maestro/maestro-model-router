@@ -12,6 +12,8 @@
 //! whichever machine it ran on. Two ports is the shape the field uses -- the
 //! bridge is given its own -- and it is the shape every platform can bind.
 
+#![cfg(test)]
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

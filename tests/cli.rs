@@ -8,6 +8,8 @@
 //! `support::spawned` builds from symlinks, so they are Unix only like the
 //! other targets that do.
 
+#![cfg(test)]
+
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};

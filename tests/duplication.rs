@@ -8,6 +8,8 @@
 //! duplication that did not earn it, three gates walking the same tree, is
 //! factored into `tests/common/mod.rs` instead of listed here.
 
+#![cfg(test)]
+
 use std::collections::BTreeSet;
 use std::process::Command;
 

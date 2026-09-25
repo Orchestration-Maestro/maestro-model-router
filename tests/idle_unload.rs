@@ -35,6 +35,8 @@
 //! unloading. Multiplying `WINDOW` there instead would turn a fast proof
 //! into one lasting several seconds for no gain.
 
+#![cfg(test)]
+
 use std::time::{Duration, Instant};
 
 mod support;
