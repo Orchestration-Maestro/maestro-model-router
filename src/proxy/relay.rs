@@ -273,6 +273,40 @@ mod tests {
     }
 
     #[test]
+    fn the_body_forwarded_is_exactly_the_length_the_caller_declared() {
+        // Longer than one buffer, so the copy has to loop, and followed by
+        // bytes the declaration does not cover, which are not the body's.
+        let body = vec![b'b'; BUFFER + 5];
+        let head = super::super::head::parse(&[
+            "POST /models/gemma3/v1/completions HTTP/1.1".to_owned(),
+            format!("Content-Length: {}", body.len()),
+        ])
+        .expect("a well-formed head");
+        let (mut caller, downstream) = connection();
+        caller.write_all(&body).expect("the body, written");
+        caller.write_all(b"after").expect("what follows, written");
+        // Ended, so a copy that wanted more than was sent reads the end
+        // rather than waiting for bytes that are never coming.
+        caller
+            .shutdown(Shutdown::Write)
+            .expect("the caller's side, ended");
+        let (mut upstream, mut child) = connection();
+
+        forward_body(&head, &mut BufReader::new(&downstream), &mut upstream)
+            .expect("the body, forwarded");
+        drop(upstream);
+
+        let mut forwarded = Vec::new();
+        child
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a read timeout");
+        child
+            .read_to_end(&mut forwarded)
+            .expect("the child reads what was forwarded");
+        assert_eq!(forwarded, body, "the declared body, and nothing past it");
+    }
+
+    #[test]
     fn neither_side_of_a_relay_holds_a_small_write_back() {
         // A streamed answer is one small write per event, and a request is a
         // head and then a body. A socket that held each small write until the

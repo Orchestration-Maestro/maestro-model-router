@@ -137,11 +137,12 @@ mod tests {
     /// configured interval.
     ///
     /// The window is ten minutes, which makes the derived interval far
-    /// longer than this test's own patience -- a `run` that only reacted to
-    /// its next scheduled tick would make this test hang rather than fail an
-    /// assertion. Nothing here starts a process: the catalog's one entry is
-    /// never requested, so `Server` is never asked to spawn anything and its
-    /// binary path only has to exist, not run.
+    /// longer than this test's own patience -- so the end is awaited with a
+    /// deadline, and a `run` that only reacted to its next scheduled tick
+    /// fails at that deadline rather than hanging the test. Nothing here
+    /// starts a process: the catalog's one entry is never requested, so
+    /// `Server` is never asked to spawn anything and its binary path only
+    /// has to exist, not run.
     #[test]
     fn a_live_reaper_ends_promptly_when_stop_is_signalled_rather_than_at_its_scheduled_sweep() {
         use super::super::permits::Permits;
@@ -198,27 +199,24 @@ mod tests {
 
         let weak = Arc::downgrade(&shared);
         let (reaping_now, told) = mpsc::channel();
-        let reaping = thread::spawn(move || {
+        let (reaped, ended) = mpsc::channel();
+        thread::spawn(move || {
             reaping_now.send(()).ok();
             run(&weak);
+            reaped.send(()).ok();
         });
 
         // Signalled once the reaper's thread says it is running, rather than
         // after a pause: the signal lands as the reaper enters its wait or
         // while it waits, and either must end it at once. A reaper that
-        // slept out its ten-minute interval would hang this test whichever.
+        // slept out its ten-minute interval would miss the deadline whichever.
         told.recv().expect("the reaper's thread started");
 
-        let started = Instant::now();
         shared.stop.signal();
-        reaping.join().expect("the reaper thread does not panic");
-
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
+        ended.recv_timeout(Duration::from_secs(5)).expect(
             "a reaper configured with a ten-minute sweep interval must still \
              end within moments of stop being signalled, rather than \
-             sleeping out its interval: waited {:?}",
-            started.elapsed()
+             sleeping out its interval",
         );
     }
 }
