@@ -145,9 +145,9 @@ mod tests {
     /// binary path only has to exist, not run.
     #[test]
     fn a_live_reaper_ends_promptly_when_stop_is_signalled_rather_than_at_its_scheduled_sweep() {
-        use super::super::access::Access;
         use super::super::permits::Permits;
         use super::super::slots::Slots;
+        use crate::access::Access;
         use crate::admission::Budget;
         use crate::catalog::Catalog;
         use crate::idle::IdleWindow;

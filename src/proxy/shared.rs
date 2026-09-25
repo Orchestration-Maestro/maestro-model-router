@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
-use super::access::Access;
 use super::permits::Permits;
 use super::slots::{Lease, Slots};
+use crate::access::Access;
 use crate::catalog::{Catalog, Entry};
 use crate::idle::IdleWindow;
 use crate::launch::{Failure, Server};

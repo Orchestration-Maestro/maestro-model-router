@@ -14,10 +14,10 @@ use std::env;
 use std::ffi::OsString;
 use std::time::{Duration, Instant};
 
+use crate::access::Access;
 use crate::admission::{Budget, Loaded};
 use crate::catalog::Residency;
 use crate::launch::Failure;
-use crate::proxy::Access;
 
 /// Where the idle window is configured, mirroring `MAESTRO_MEMORY_BUDGET_MIB`.
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";
