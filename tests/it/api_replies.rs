@@ -9,7 +9,7 @@
 //! code, and a `Retry-After` exactly when retrying can change the answer.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
 use crate::support::{MODEL, ModelsRoot, catalog_text, get, post, request, serving, status};
@@ -263,7 +263,7 @@ fn a_router_authored_reply_is_readable_by_a_browser_client() {
 
 /// Sends a request and reads the reply with a deadline of its own, for the
 /// cases where the point is that an answer arrives at all.
-fn request_within(address: std::net::SocketAddr, raw: &str, deadline: Duration) -> String {
+fn request_within(address: SocketAddr, raw: &str, deadline: Duration) -> String {
     let mut stream = TcpStream::connect(address).expect("the router is listening");
     stream
         .set_read_timeout(Some(deadline))

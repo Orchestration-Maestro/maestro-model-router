@@ -11,7 +11,6 @@
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::thread::sleep;
 use std::time::Duration;
 
 use crate::support::{MODEL, ModelsRoot, capped, catalog_text, get, status};
@@ -20,10 +19,10 @@ use crate::support::{MODEL, ModelsRoot, capped, catalog_text, get, status};
 fn a_caller_past_the_limit_waits_to_be_answered_until_a_connection_ends() {
     let serving = capped(&catalog_text(""), ModelsRoot::with(&[MODEL]), 2);
     // Two callers that send nothing, each holding one of the two connections
-    // the router answers at once.
+    // the router answers at once. The backlog hands connections out in the
+    // order they arrived, so these two take both turns before the third.
     let first = TcpStream::connect(serving.address()).expect("the router accepts");
     let _second = TcpStream::connect(serving.address()).expect("the router accepts");
-    sleep(Duration::from_millis(200));
 
     let mut third = TcpStream::connect(serving.address()).expect("the backlog accepts");
     third

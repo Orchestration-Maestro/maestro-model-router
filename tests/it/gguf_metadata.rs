@@ -6,6 +6,9 @@
 //! that a file lying about its lengths cannot make the router allocate its way
 //! into trouble.
 
+use std::fs;
+use std::time::{Duration, Instant};
+
 use maestro_model_router::gguf::Metadata;
 
 use crate::fixtures::{Gguf, Scratch, Value};
@@ -105,7 +108,7 @@ fn the_previous_format_version_is_read_the_same_way() {
 fn a_file_that_is_not_gguf_is_refused_by_name() {
     let scratch = Scratch::new("gguf-magic");
     let path = scratch.path().join("weights.gguf");
-    std::fs::write(
+    fs::write(
         &path,
         b"PK\x03\x04 this is a zip, whatever its extension says",
     )
@@ -126,7 +129,7 @@ fn a_file_cut_short_is_refused_rather_than_read_as_empty() {
     let scratch = Scratch::new("gguf-truncated");
     let path = scratch.path().join("model.gguf");
     let bytes = Gguf::model("llama", 32, 4096, 4096).bytes();
-    std::fs::write(&path, &bytes[..bytes.len() - 3]).expect("write");
+    fs::write(&path, &bytes[..bytes.len() - 3]).expect("write");
 
     assert!(
         Metadata::read(&path).is_err(),
@@ -153,15 +156,15 @@ fn a_length_the_file_cannot_back_is_a_fault_not_an_allocation() {
     bytes.extend_from_slice(&8u32.to_le_bytes());
     bytes.extend_from_slice(&(1u64 << 40).to_le_bytes());
     bytes.extend_from_slice(b"short");
-    std::fs::write(&path, &bytes).expect("write");
+    fs::write(&path, &bytes).expect("write");
 
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     assert!(
         Metadata::read(&path).is_err(),
         "the file cannot back the length it claims"
     );
     assert!(
-        started.elapsed() < std::time::Duration::from_secs(5),
+        started.elapsed() < Duration::from_secs(5),
         "refused promptly, without touching a terabyte"
     );
 }
