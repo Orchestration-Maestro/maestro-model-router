@@ -1,6 +1,7 @@
 //! The argument table: which command a command line names, and how what it
 //! had to say becomes the process's exit code.
 
+use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -25,12 +26,18 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         // Whole catalog or one entry. `check` reads the files and reasons; this
         // starts each entry and reads the card, which is the only way to tell
         // an estimate that is merely arithmetic from one that is true.
-        [command, catalog] if command == "bench" => {
-            report(bench::command(Path::new(catalog), None))
-        }
-        [command, catalog, id] if command == "bench" => {
-            report(bench::command(Path::new(catalog), Some(id)))
-        }
+        [command, catalog] if command == "bench" => report(bench::command(
+            Path::new(catalog),
+            None,
+            launching::to_stderr(),
+            &mut io::stdout(),
+        )),
+        [command, catalog, id] if command == "bench" => report(bench::command(
+            Path::new(catalog),
+            Some(id),
+            launching::to_stderr(),
+            &mut io::stdout(),
+        )),
         [command, catalog, id] if command == "launch" => {
             report(launching::launch(Path::new(catalog), id))
         }

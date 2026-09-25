@@ -15,9 +15,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::measure::{self, Measurement};
 use crate::catalog::{Catalog, Entry};
-use crate::launch::{Server, models_root};
+use crate::launch::{LineSink, Server, models_root};
 
-/// Loads each entry in turn, measures it, and writes what it found to `out`.
+/// Loads each entry in turn, measures it, and writes what it found to `out`,
+/// passing every line a child writes on to `sink`.
 ///
 /// One at a time, and never two. The number wanted is what a single entry
 /// costs; two resident at once would attribute one model's pages to the
@@ -31,12 +32,19 @@ use crate::launch::{Server, models_root};
 /// found, when a requested entry is not in the catalog, or when `out` cannot
 /// be written to. A single entry that fails to load is reported in its row
 /// and does not stop the rest.
-pub fn command(path: &Path, only: Option<&str>, out: &mut impl Write) -> Result<(), String> {
+pub fn command(
+    path: &Path,
+    only: Option<&str>,
+    sink: LineSink,
+    out: &mut impl Write,
+) -> Result<(), String> {
     let text = fs::read_to_string(path)
         .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     let parsed = Catalog::parse(&text).map_err(|report| format!("{report}"))?;
     let root = models_root().map_err(|failure| failure.to_string())?;
-    let server = Server::located(None).map_err(|failure| failure.to_string())?;
+    let server = Server::located(None)
+        .map_err(|failure| failure.to_string())?
+        .with_sink(sink);
 
     let wanted: Vec<_> = parsed
         .entries
