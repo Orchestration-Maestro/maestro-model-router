@@ -23,69 +23,58 @@ repos:
     hooks:
       - id: typos
         name: Spelling in code and prose
-        language: mise
-        additional_dependencies: ["aqua:crate-ci/typos@1.50.2"]
+        language: system
         entry: typos --force-exclude
       - id: gitleaks
         name: Secrets in the staged change
-        language: mise
-        additional_dependencies: ["aqua:gitleaks/gitleaks@8.30.1"]
+        language: system
         entry: gitleaks git --pre-commit --staged --redact --no-banner
         pass_filenames: false
       - id: yamlfmt
         name: YAML formatting
-        language: mise
-        additional_dependencies: ["aqua:google/yamlfmt@0.21.0"]
+        language: system
         entry: yamlfmt -no_global_conf -lint -formatter indent=2,include_document_start=false,retain_line_breaks_single=true,pad_line_comments=2,line_ending=lf
         types: [yaml]
       - id: taplo
         name: TOML formatting
-        language: mise
-        additional_dependencies: ["aqua:tamasfe/taplo@0.10.0"]
+        language: system
         entry: taplo fmt --check --diff --no-auto-config --option array_auto_collapse=false
         types: [toml]
         exclude: '(^|/)supply-chain/'
       - id: actionlint
         name: GitHub workflow lint
-        language: mise
-        additional_dependencies: ["aqua:rhysd/actionlint@1.7.12", "aqua:koalaman/shellcheck@0.11.0"]
+        language: system
         entry: actionlint
         files: '^\.github/workflows/.*\.ya?ml$'
       - id: zizmor
         name: GitHub workflow security audit
-        language: mise
-        additional_dependencies: ["aqua:zizmorcore/zizmor@1.30.1"]
+        language: system
         entry: zizmor --offline --persona=pedantic --no-progress
         files: '^\.github/(workflows/.*|dependabot|actions/.*/action)\.ya?ml$'
       - id: shellcheck
         name: Shell lint
-        language: mise
-        additional_dependencies: ["aqua:koalaman/shellcheck@0.11.0"]
+        language: system
         entry: shellcheck
         types: [shell]
       - id: shfmt
         name: Shell formatting
-        language: mise
-        additional_dependencies: ["aqua:mvdan/sh@3.14.1"]
+        language: system
         entry: shfmt -d
         types: [shell]
       - id: rumdl
         name: Markdown structure
-        language: mise
-        additional_dependencies: ["aqua:rvben/rumdl@0.2.77"]
+        language: system
         entry: rumdl check --no-cache --disable MD013,MD041 --config 'MD033.allowed-elements = ["a", "br", "details", "h1", "img", "p", "picture", "source", "strong", "summary"]'
         types: [markdown]
         exclude: '^CHANGELOG\.md$'
       - id: lychee
         name: Markdown links, offline
-        language: mise
-        additional_dependencies: ["aqua:lycheeverse/lychee@0.24.2"]
+        language: system
         entry: lychee --offline --no-progress
         types: [markdown]
       - id: editorconfig-checker
         name: Every file against .editorconfig
-        language: mise
-        additional_dependencies: ["github:editorconfig-checker/editorconfig-checker@4.0.2"]
+        language: system
         entry: editorconfig-checker -disable-indent-size
       - id: conventional-commit-header
         name: Commit message opens with a conventional header
@@ -111,7 +100,7 @@ repos:
         stages: [pre-push]
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-architecture
@@ -120,7 +109,7 @@ repos:
         files: '(\.rs|Cargo\.toml|Cargo\.lock|maestro-quality\.toml|clippy\.toml)$'
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-hygiene
@@ -129,7 +118,7 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-rules
@@ -138,7 +127,7 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-guide
@@ -147,6 +136,6 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v3.0.1:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.0.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
