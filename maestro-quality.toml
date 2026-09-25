@@ -1,0 +1,7 @@
+# The organization's quality rules as this repository shapes them: the inputs
+# its CI caller passes. Read by rust-gate sync.
+
+# The router claims Windows, macOS and Linux, so every pull request tests all
+# three; AGENTS.md says why the claim matters here.
+[ci]
+platforms = "macos windows"
