@@ -123,8 +123,8 @@ const WATCH: Duration = Duration::from_millis(100);
 ///
 /// The flush is the whole slice. A buffered writer that flushed when its
 /// buffer filled would batch a stream into one delivery, and the reply text
-/// would be identical either way -- which is why `tests/streaming.rs` asserts
-/// when bytes arrive rather than what they say.
+/// would be identical either way -- which is why `tests/it/stream_timing.rs`
+/// asserts when bytes arrive rather than what they say.
 ///
 /// The caller is watched while this runs. A write that fails tells the relay
 /// its caller left, but only once there is something to write, and a model

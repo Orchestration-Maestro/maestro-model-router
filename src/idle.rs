@@ -234,9 +234,9 @@ mod tests {
     }
 
     /// Both protection rules have one shape, mirroring
-    /// `admission::tests::with_one_protected`: a protected entry, well past
-    /// the window, held beside an on-demand one of the same age that is not
-    /// protected. The rules differ only in what makes an entry protected, so
+    /// `admission::decision::tests::with_one_protected`: a protected entry,
+    /// well past the window, held beside an on-demand one of the same age that
+    /// is not protected. The rules differ only in what makes an entry protected, so
     /// only that field is a parameter.
     fn with_one_protected(protected: Loaded) -> Vec<String> {
         let window = IdleWindow::new(Duration::from_secs(60));

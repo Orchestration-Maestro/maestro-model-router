@@ -137,9 +137,9 @@ impl Slots {
                     Ok(()) => Ok(Room::Made),
                     // Something started reading the model whose room this
                     // wanted, between the decision and the taking.
-                    // `tests/eviction.rs` tells this apart from a snapshot
-                    // that already saw it busy by "reached first", because
-                    // what the two leave behind differs.
+                    // `tests/it/eviction_policy.rs` tells this apart from a
+                    // snapshot that already saw it busy by "reached first",
+                    // because what the two leave behind differs.
                     Err(blocker) => Ok(Room::Held(format!(
                         "'{}' needs room held by '{blocker}', which a request \
                          reached first",

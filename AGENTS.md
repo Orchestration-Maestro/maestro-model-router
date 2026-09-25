@@ -81,18 +81,18 @@ The failure this prevents: declaring success without ever verifying it.
 
 **Derive every path at run time.** The home directory from the environment,
 the repository root from the working directory, model files from a configured
-models root. `tests/paths.rs` refuses a home directory, a drive letter or a
-user profile, and deliberately allows `/usr`, `/opt`, `/etc`, `/var` and
-`/tmp`, which name a platform rather than a machine. In a test, use a
-synthetic root such as `/somewhere`.
+models root. `tests/it/machine_paths.rs` refuses a home directory, a drive
+letter or a user profile, and deliberately allows `/usr`, `/opt`, `/etc`,
+`/var` and `/tmp`, which name a platform rather than a machine. In a test, use
+a synthetic root such as `/somewhere`.
 
 **No `unsafe`, the tests included.** `Cargo.toml` forbids it for every target.
 A test that wants a different environment variable reads the rule through its
 `from_variable` form, or runs the binary with `Command::env`; changing the
 process environment is `unsafe` in Rust 2024.
 
-**English only.** Prose and identifiers. `tests/language.rs` scans for Latin
-diacritics.
+**English only.** Prose and identifiers. `tests/it/english_only.rs` scans for
+Latin diacritics.
 
 **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `ci:`, `build:`, `chore:`, `perf:`, `revert:`. An organisation ruleset refuses
@@ -130,9 +130,10 @@ coverage, advisories, a secret scan, the declared Rust version, a
 reproducible release build and mutation testing of the change. The full
 eviction sweep runs weekly and reports.
 
-`tests/duplication.rs` uses an allowlist rather than a threshold. Adding an
-entry is expected; adding one without its reason is not, and a second test
-fails when an entry stops being true, so the list cannot rot into excuses.
+`tests/it/duplication_allowlist.rs` uses an allowlist rather than a threshold.
+Adding an entry is expected; adding one without its reason is not, and a
+second test fails when an entry stops being true, so the list cannot rot into
+excuses.
 
 ## Things that will surprise you
 

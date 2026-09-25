@@ -41,10 +41,10 @@ path = "src/main.rs"
 #
 # Not behind a feature. The fast tier runs `cargo test --all-targets` without
 # `--all-features`, so a feature-gated stub would be skipped in continuous
-# integration while the run reported green -- the failure `tests/duplication.rs`
-# warns about in its own words. It is built by the tests, and it ships in the
-# CI payload beside the router, because rust-workflows builds every binary
-# target: harmless, since it serves no model.
+# integration while the run reported green -- the failure
+# `tests/it/duplication_allowlist.rs` warns about in its own words. It is built
+# by the tests, and it ships in the CI payload beside the router, because
+# rust-workflows builds every binary target: harmless, since it serves no model.
 [[bin]]
 name = "stub-llama-server"
 path = "src/bin/stub_llama_server/main.rs"
