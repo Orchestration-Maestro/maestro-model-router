@@ -12,7 +12,9 @@ use std::time::{Duration, Instant};
 /// never did.
 ///
 /// The thread parks for `every` between two asks, so a poll that waits
-/// seconds does not spin a core the processes under test need. A park can end
+/// seconds does not spin a core the processes under test need. That park is
+/// the poll interval, never the wait itself: a caller waits on the condition
+/// `probe` asks, and `within` only bounds how long it may take. A park can end
 /// early, which costs one ask more and nothing else: the answer, not the time
 /// that passed, is what ends the wait.
 pub(crate) fn polled<T>(
@@ -33,6 +35,9 @@ pub(crate) fn polled<T>(
 }
 
 /// Whether `condition` came to hold within `within`, asked every `every`.
+///
+/// `every` is the poll interval, as in [`polled`]: the caller waits on
+/// `condition`, never on the time between two asks.
 pub(crate) fn eventually(
     within: Duration,
     every: Duration,
