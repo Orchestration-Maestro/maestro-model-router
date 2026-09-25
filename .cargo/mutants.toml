@@ -25,4 +25,8 @@ exclude_re = [
   # guard, the second signal starts another stop instead of ending the
   # process.
   'src/serving\.rs:\d+:\d+: replace match guard signalled with false in wait_for_the_end$',
+  # The stub reads a request body only when its declared length is above
+  # zero. `>=` also runs that read at zero, which reads nothing into an empty
+  # buffer, so its behaviour is the same and no test can tell them apart.
+  'src/bin/stub_llama_server/reply\.rs:\d+:\d+: replace > with >= in answer$',
 ]
