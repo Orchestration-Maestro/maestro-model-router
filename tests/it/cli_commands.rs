@@ -11,6 +11,7 @@
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
+use std::time::Duration;
 
 use crate::support::{MODEL, ModelsRoot, catalog_text};
 
@@ -231,6 +232,41 @@ mod with_the_stub {
             text(&output.stderr).contains("'not-an-address' is not an address to bind"),
             "{}",
             text(&output.stderr)
+        );
+    }
+
+    /// Everything `serve` says on standard output, from the address on, once
+    /// a signal has ended it.
+    fn served(catalog: &str, root: &ModelsRoot) -> String {
+        let search = SearchPath::with_stub();
+        let mut router = RouterProcess::serve(Path::new(catalog), root, &search);
+        let first = router.address();
+        router.terminate();
+        router
+            .exited_within(Duration::from_secs(20))
+            .unwrap_or_else(|| panic!("serving {first} outlived its signal:\n{}", router.stderr()));
+        router.rest_of_stdout()
+    }
+
+    // Memory a resident holds is gone for good, so `serve` says how much at
+    // the start, and says nothing about it when no entry is resident.
+    #[test]
+    fn serve_says_what_residents_reserve_only_when_there_are_some() {
+        let root = ModelsRoot::with(&[MODEL]);
+
+        let said = served(&written(&root, &catalog_text("")), &root);
+        assert!(
+            !said.contains("residents reserve"),
+            "no entry is resident, so nothing is reserved:\n{said}"
+        );
+
+        let said = served(
+            &written(&root, &catalog_text("residency = \"resident\"\n")),
+            &root,
+        );
+        assert!(
+            said.contains("residents reserve 512 MiB"),
+            "the resident's estimate is reserved:\n{said}"
         );
     }
 

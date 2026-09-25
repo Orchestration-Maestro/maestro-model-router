@@ -81,7 +81,7 @@ fn a_terminated_router_ends_its_children_and_exits_cleanly() {
 
     let said = router.rest_of_stdout();
     assert!(
-        said.contains("ended 1 child"),
+        said.lines().any(|line| line == "stopping: ended 1 child"),
         "the router says how many children it ended on the way out:\n{said}"
     );
     // The binary hands the library a voice that writes to its own standard
