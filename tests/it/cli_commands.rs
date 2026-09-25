@@ -96,6 +96,29 @@ fn check_without_a_models_root_says_it_checked_the_shape_only() {
 }
 
 #[test]
+fn check_without_a_configured_root_reads_models_under_the_home_directory() {
+    let home = ModelsRoot::with(&[&format!("models/{MODEL}")]);
+    let catalog = written(&home, &catalog_text(""));
+
+    // Run from inside that root, where a `models` directory relative to the
+    // working directory is not there, so only the home directory finds it.
+    let output = Command::new(env!("CARGO_BIN_EXE_model-router"))
+        .args(["check", &catalog])
+        .current_dir(home.path().join("models"))
+        .env_remove("MAESTRO_MODELS_ROOT")
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .output()
+        .expect("the router binary is built by cargo test");
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert!(
+        text(&output.stdout).contains("is valid: 1 models, 1 declared and 0 found under the root"),
+        "read against 'models' under the home directory:\n{}",
+        text(&output.stdout)
+    );
+}
+
+#[test]
 fn check_names_every_problem_of_an_unusable_catalog_not_only_the_first() {
     let root = ModelsRoot::with(&[MODEL]);
     let catalog = written(
@@ -149,11 +172,53 @@ fn a_known_command_with_the_wrong_number_of_operands_is_answered_with_the_usage(
 
 #[cfg(unix)]
 mod with_the_stub {
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
     use std::time::Duration;
+    use std::{env, iter};
 
     use super::*;
     use crate::support::spawned::{RouterProcess, SearchPath};
     use crate::support::{get, request, status};
+
+    // With no budget set, `serve` sets one from the device, asking the device
+    // tool it finds on the search path. The one here answers the device query
+    // as a card of 32607 MiB would, and every other query with nothing.
+    #[test]
+    fn serve_derives_its_budget_from_the_device_tool_on_the_search_path() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+        let tools = root.path().join("tools");
+        let tool = tools.join("nvidia-smi");
+        fs::create_dir_all(&tools).expect("a directory for the device tool");
+        fs::write(
+            &tool,
+            "#!/bin/sh\ncase \"$1\" in --query-gpu=*) echo '32607, 7903' ;; esac\n",
+        )
+        .expect("the device tool, written");
+        fs::set_permissions(&tool, Permissions::from_mode(0o755))
+            .expect("the device tool, executable");
+        let search = SearchPath::with_stub();
+        let path = env::join_paths(iter::once(tools).chain(env::split_paths(&search.value())))
+            .expect("a search path with no separator in it");
+
+        let mut router = RouterProcess::serve_with(
+            Path::new(&catalog),
+            &root,
+            &search,
+            &[("PATH", path.to_str().expect("a search path in UTF-8"))],
+        );
+        let first = router.address();
+        router.terminate();
+        router
+            .exited_within(Duration::from_secs(20))
+            .unwrap_or_else(|| panic!("serving {first} outlived its signal:\n{}", router.stderr()));
+        let said = router.rest_of_stdout();
+        assert!(
+            said.contains("derived from the device (32607 MiB total"),
+            "{said}"
+        );
+    }
 
     #[test]
     fn serve_requires_the_key_its_environment_sets() {

@@ -159,7 +159,71 @@ fn output(command: &mut Command) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+
     use super::*;
+
+    /// Set on the tool [`a_tool_that_hangs_is_killed_once_its_time_is_up`]
+    /// runs, so the helper below hangs there and nowhere else.
+    const HANG: &str = "MAESTRO_TEST_HANG";
+
+    /// Under WSL the driver's tools are mounted at a fixed platform location
+    /// off the search path; on Windows they sit under directories the
+    /// environment names, and every Windows machine names its system root.
+    #[test]
+    fn the_device_tool_is_looked_for_where_the_platform_puts_it() {
+        let locations = known_locations();
+        if cfg!(windows) {
+            assert!(
+                !locations.is_empty()
+                    && locations
+                        .iter()
+                        .all(|location| location.ends_with("nvidia-smi.exe")),
+                "{locations:?}"
+            );
+        } else {
+            assert_eq!(locations, [PathBuf::from("/usr/lib/wsl/lib/nvidia-smi")]);
+        }
+    }
+
+    /// Not a check of its own: the tool that hangs, for the test below. It
+    /// waits on a channel nobody sends on, bounded so that a tool nobody
+    /// kills still ends on its own.
+    #[test]
+    fn hangs_when_asked_to() {
+        if env::var_os(HANG).is_some() {
+            let (_sender, never) = mpsc::channel::<()>();
+            assert_eq!(
+                never.recv_timeout(TIMEOUT * 12),
+                Err(mpsc::RecvTimeoutError::Timeout),
+                "nobody sends"
+            );
+        }
+    }
+
+    /// A tool that never finishes answers nothing once its time is up,
+    /// rather than holding its caller for as long as it runs. Driven through
+    /// this test binary running the helper above.
+    #[test]
+    fn a_tool_that_hangs_is_killed_once_its_time_is_up() {
+        let own = env::current_exe().expect("this test binary's own path");
+        let (answered, answer) = mpsc::channel();
+        thread::spawn(move || {
+            drop(
+                answered.send(output(
+                    Command::new(own)
+                        .args(["--exact", "memory::command::tests::hangs_when_asked_to"])
+                        .env(HANG, "1"),
+                )),
+            );
+        });
+
+        assert_eq!(
+            answer.recv_timeout(TIMEOUT * 3),
+            Ok(None),
+            "given up on after {TIMEOUT:?}"
+        );
+    }
 
     /// A tool that is not there is an unknown figure, not a failure. Proven
     /// with a name no machine carries, so the test is about absence rather

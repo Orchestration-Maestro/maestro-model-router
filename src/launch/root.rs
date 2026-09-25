@@ -62,3 +62,25 @@ fn home_directory() -> Option<PathBuf> {
     let variable = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     env::var_os(variable).map(PathBuf::from)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Also proved in `tests/it/models_root.rs`. Here as well because a root
+    // that ignored its variable sends every test that runs the binary to the
+    // models under the home directory, which on a machine that holds some can
+    // take longer to read than a test is given; the library's own tests run
+    // first, and fail at once.
+    #[test]
+    fn a_configured_root_wins_over_the_home_directory() {
+        assert_eq!(
+            models_root_from(
+                Some("/somewhere/models".into()),
+                Some(PathBuf::from("/somewhere/home"))
+            )
+            .expect("a configured root"),
+            PathBuf::from("/somewhere/models")
+        );
+    }
+}

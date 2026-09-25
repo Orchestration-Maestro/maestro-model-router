@@ -270,6 +270,17 @@ const ACCEPTED: &[(&str, &str)] = &[
          method taking a parameter saying which stream, at every call site \
          where the name says it once.",
     ),
+    (
+        "check_without_a_models_root_says_it_checked_the_shape_only \
+         <-> check_without_a_configured_root_reads_models_under_the_home_directory",
+        "Both run check on a one-model catalog and read one line of what it \
+         said, which is the shape of every check test. What differs is where \
+         the root comes from: none at all, or the home directory once the \
+         configured root is taken away, and that is the whole of each claim. \
+         Merging them takes the environment as a parameter and leaves one \
+         test naming neither the shape-only check nor the fallback, which \
+         fail for unrelated reasons.",
+    ),
 ];
 
 /// `path:lines function name <-> path:lines function name` -> `name <-> name`.

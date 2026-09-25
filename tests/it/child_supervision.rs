@@ -16,10 +16,12 @@ use std::collections::BTreeMap;
 use std::env::temp_dir;
 use std::fs::remove_file;
 use std::process;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use maestro_model_router::catalog::{Entry, RelativePath, Residency};
-use maestro_model_router::launch::{Failure, Liveness, Server};
+use maestro_model_router::launch::{Failure, LineSink, Liveness, Server};
+use maestro_model_router::memory::Probe;
 
 use crate::support::poll::eventually;
 use crate::support::{ModelsRoot, health, stub_binary};
@@ -206,6 +208,36 @@ fn a_child_that_loses_the_port_race_once_still_starts_on_the_retry() {
     drop(remove_file(&marker));
 }
 
+/// Only a lost race is retried. A child that answered before it died failed
+/// on its own account, and a second start would only fail the same way,
+/// later: it is started once, so it says its last words once.
+#[test]
+fn a_child_that_answered_before_it_died_is_not_started_again() {
+    let root = ModelsRoot::with(&[MODEL]);
+    let mut entry = entry("crasher");
+    entry
+        .flags
+        .insert("ready-after".to_owned(), "600000".to_owned());
+    // Long enough for several probes to reach it while it serves.
+    entry
+        .flags
+        .insert("exit-after".to_owned(), "1000".to_owned());
+    let (heard, hearing) = mpsc::channel();
+    let server = server().with_sink(LineSink::new(move |_, line| {
+        drop(heard.send(line.to_owned()));
+    }));
+
+    server
+        .start(&entry, root.path())
+        .expect_err("a child that dies never becomes ready");
+
+    let exits = hearing
+        .try_iter()
+        .filter(|line| line.contains("exiting with code"))
+        .count();
+    assert_eq!(exits, 1, "started {exits} times");
+}
+
 /// The retry is bounded at one: a child that loses the race on both its
 /// attempts is a real failure, not an infinite loop.
 #[test]
@@ -250,6 +282,29 @@ fn stopping_a_child_terminates_it_and_check_reports_the_exit() {
         matches!(child.check(), Liveness::Exited(_)),
         "and gone afterwards, reaped rather than left as a zombie"
     );
+}
+
+/// The pid is how the machine is asked what a child holds once it has
+/// loaded, so it names that child: measured while it runs, and gone once it
+/// is stopped. Elsewhere than the Unix platforms a resident set may
+/// legitimately be unknown, so only its absence is asserted everywhere.
+#[test]
+fn a_childs_pid_is_the_process_the_machine_measures_until_it_stops() {
+    let root = ModelsRoot::with(&[MODEL]);
+    let mut child = server()
+        .start(&entry("gemma3"), root.path())
+        .expect("the stub becomes ready");
+    let probe = Probe::detect();
+    let pid = child.pid();
+
+    let running = probe.measure(pid).resident_mib;
+    child.stop();
+    let stopped = probe.measure(pid).resident_mib;
+
+    if cfg!(unix) {
+        assert!(running.is_some(), "pid {pid} measures while it runs");
+    }
+    assert_eq!(stopped, None, "pid {pid} is gone once the child is stopped");
 }
 
 #[test]

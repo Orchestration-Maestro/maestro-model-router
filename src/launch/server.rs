@@ -216,3 +216,15 @@ fn free_port() -> io::Result<u16> {
     let port = listener.local_addr()?.port();
     Ok(port)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Zero asks the system for any port. A child handed it would bind one
+    // nobody probes, so what is handed on is the port the system assigned.
+    #[test]
+    fn a_free_port_is_the_one_the_system_assigned_rather_than_any() {
+        assert_ne!(free_port().expect("a loopback port"), 0);
+    }
+}

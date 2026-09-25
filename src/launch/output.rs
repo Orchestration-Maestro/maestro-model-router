@@ -137,6 +137,13 @@ mod tests {
 
     use super::*;
 
+    // Closures have no `Debug`, so the server a sink travels in would print
+    // nothing where it sits; it prints its name instead.
+    #[test]
+    fn a_sink_is_debugged_by_its_name() {
+        assert_eq!(format!("{:?}", LineSink::default()), "LineSink");
+    }
+
     #[test]
     fn the_last_lines_are_kept_and_the_oldest_are_let_go() {
         let said = Said::default();

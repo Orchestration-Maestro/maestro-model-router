@@ -29,4 +29,10 @@ exclude_re = [
   # zero. `>=` also runs that read at zero, which reads nothing into an empty
   # buffer, so its behaviour is the same and no test can tell them apart.
   'src/bin/stub_llama_server/reply\.rs:\d+:\d+: replace > with >= in answer$',
+  # `output` in src/memory/command.rs polls a hung tool until a monotonic
+  # `Instant` deadline. `<` and `<=` differ only when `Instant::now()` equals
+  # the deadline to the nanosecond. At that instant `<=` sleeps one more
+  # poll and then kills the tool, so the caller still gets `None`. No test
+  # can make the clock hit that instant.
+  'src/memory/command\.rs:\d+:\d+: replace < with <= in output$',
 ]
