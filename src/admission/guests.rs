@@ -35,6 +35,15 @@ fn an_idle_guest_goes_before_any_other_model_the_coldest_guest_first() {
         "a model loaded into free room gives its room back before any \
          other, and the coldest of them goes first"
     );
+
+    // 1900 wanted needs 804 to go, which neither guest frees alone. Both
+    // go, the colder first, and "chat" stays: a policy that put only the
+    // coldest guest first would take "chat" second.
+    assert_eq!(
+        budget.admit_with_guests(&held, &guests, &wanted("bigger-chat", 1_900), None),
+        Decision::Unload(vec!["cold-guest".to_owned(), "warm-guest".to_owned()]),
+        "every idle guest goes before any other model, not only the coldest"
+    );
 }
 
 #[test]
