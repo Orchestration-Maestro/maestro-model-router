@@ -24,7 +24,7 @@ reason = "it is what admission's pure policy returns and the proxy acts on; the 
 rule = "ARC-005"
 path = "src/launch/mod.rs"
 item = "models_root"
-reason = "where catalog locations resolve is the launcher's to say; bench is its only library caller, but the binary's launch and serve commands and the tests resolve the models root through it too, which the rule does not count"
+reason = "where catalog locations resolve is the launcher's to say; bench is its only library caller, but the binary's launch and serve commands resolve the models root through it too, and the tests reach it by running the binary, neither of which the rule counts"
 
 [[exception]]
 rule = "ARC-005"
