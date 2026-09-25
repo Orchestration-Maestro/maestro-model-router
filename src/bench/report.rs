@@ -6,8 +6,9 @@
 //! output goes to find them.
 
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
+use std::time::{self, SystemTime};
 
 use super::Measurement;
 use crate::catalog::Catalog;
@@ -56,7 +57,7 @@ pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
         // Printed before the load, because a large model is minutes and a
         // silent terminal looks like a hang.
         print!("{:<20} {:>9} ", entry.id, entry.memory_estimate_mib);
-        let _ = std::io::stdout().flush();
+        let _ = io::stdout().flush();
 
         match super::entry(&server, entry, &root) {
             Ok(reading) => {
@@ -120,8 +121,8 @@ fn recommendations(measured: &[Measurement]) {
 /// tenants and the context actually used all move it. Recording when it was
 /// taken is what lets a later reader distrust it by the right amount.
 fn today() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let seconds = SystemTime::now()
+        .duration_since(time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     date_of(seconds)
 }

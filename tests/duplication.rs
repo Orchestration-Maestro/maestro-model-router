@@ -169,12 +169,18 @@ const ACCEPTED: &[(&str, &str)] = &[
          similarity score.",
     ),
     (
-        "budgeted <-> queued",
-        "The delegation family again, with the way that states a wait. Each \
-         of these names one setting and hands the rest to the shared launch, \
-         so the shape they share is the handing-on itself. Merging them is \
-         one constructor taking every setting, which is exactly what the \
-         tests calling `serving` are spared from naming.",
+        "budgeted <-> probed",
+        "The delegation family again, with the way that states a machine. \
+         Each of these names one setting and hands the rest to the shared \
+         launch, so the shape they share is the handing-on itself. Merging \
+         them is one constructor taking every setting, which is exactly what \
+         the tests calling `serving` are spared from naming.",
+    ),
+    (
+        "queued <-> probed",
+        "The same family again: a wait for room, or a probed machine, each \
+         stated over a budget. Merged, every queueing test would state a \
+         machine it is not about, and every probe test a wait.",
     ),
     (
         "windowed <-> impatient",

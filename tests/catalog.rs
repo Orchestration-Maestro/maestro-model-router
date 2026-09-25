@@ -14,6 +14,7 @@
 #![cfg(test)]
 
 use maestro_model_router::catalog::{Catalog, RelativePath, Residency};
+use std::fs;
 use std::path::Path;
 
 /// The golden catalog, parsed. A fixture rather than an inline string: it is
@@ -233,7 +234,7 @@ const CARD_MIB: u64 = 32_607;
 /// The catalog that ships with this repository, parsed.
 fn shipped() -> Catalog {
     let shipped = concat!(env!("CARGO_MANIFEST_DIR"), "/catalog.toml");
-    let text = std::fs::read_to_string(shipped).expect("catalog.toml ships with this repository");
+    let text = fs::read_to_string(shipped).expect("catalog.toml ships with this repository");
     Catalog::parse(&text).unwrap_or_else(|report| {
         panic!("the shipped catalog must be valid:\n{report}");
     })
@@ -791,8 +792,8 @@ fn every_shard_of_a_split_model_is_weighed() {
 fn a_file_that_is_not_readable_as_gguf_is_estimated_from_its_size_alone() {
     let scratch = Scratch::new("catalog-fallback");
     let path = scratch.path().join("a/model.gguf");
-    std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
-    std::fs::write(&path, vec![0u8; 10 << 20]).expect("ten mebibytes of nothing");
+    fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
+    fs::write(&path, vec![0u8; 10 << 20]).expect("ten mebibytes of nothing");
 
     let reading = Catalog::read(&one_entry(""), scratch.path()).expect("still derivable");
 

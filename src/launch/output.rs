@@ -94,7 +94,7 @@ impl Said {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::io::{self, Cursor, Write};
     use std::time::Instant;
 
     use super::*;
@@ -103,7 +103,7 @@ mod tests {
     fn the_last_lines_are_kept_and_the_oldest_are_let_go() {
         let said = Said::default();
         let output = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n";
-        said.drain("model", std::io::Cursor::new(output.as_bytes().to_vec()));
+        said.drain("model", Cursor::new(output.as_bytes().to_vec()));
 
         assert_eq!(
             said.last(),
@@ -116,7 +116,7 @@ mod tests {
     fn a_line_without_an_end_is_split_rather_than_held() {
         let said = Said::default();
         let long = "x".repeat(5000);
-        said.drain("model", std::io::Cursor::new(long.into_bytes()));
+        said.drain("model", Cursor::new(long.into_bytes()));
 
         let last = said.last();
         assert_eq!(last.len(), 2, "split at the longest line: {last:?}");
@@ -127,14 +127,14 @@ mod tests {
     #[test]
     fn output_that_is_not_text_is_kept_readable() {
         let said = Said::default();
-        said.drain("model", std::io::Cursor::new(vec![b'o', b'k', 0xff, b'\n']));
+        said.drain("model", Cursor::new(vec![b'o', b'k', 0xff, b'\n']));
         assert_eq!(said.last(), ["ok\u{fffd}"]);
     }
 
     #[test]
     fn a_stream_still_open_is_waited_for_until_it_ends() {
         let said = Said::default();
-        let (output, mut child) = std::io::pipe().expect("a pipe");
+        let (output, mut child) = io::pipe().expect("a pipe");
         said.drain("model", output);
         let speaking = thread::spawn(move || {
             child
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn once_every_stream_has_ended_its_lines_are_given_at_once() {
         let said = Said::default();
-        said.drain("model", std::io::Cursor::new(b"done\n".to_vec()));
+        said.drain("model", Cursor::new(b"done\n".to_vec()));
         let started = Instant::now();
 
         assert_eq!(said.last(), ["done"]);
@@ -171,7 +171,7 @@ mod tests {
         // What a grandchild does when it inherits the pipe and outlives the
         // child: the stream stays open with nobody left to end it.
         let said = Said::default();
-        let (output, mut held) = std::io::pipe().expect("a pipe");
+        let (output, mut held) = io::pipe().expect("a pipe");
         held.write_all(b"still here\n").expect("a line, written");
         said.drain("model", output);
         let started = Instant::now();

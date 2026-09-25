@@ -15,7 +15,7 @@
 //! its mind would trade the property this slice exists for against a nicer
 //! message.
 
-use std::io::{BufReader, ErrorKind, Read, Write};
+use std::io::{self, BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -47,7 +47,7 @@ pub(super) fn run(
     body: Option<&[u8]>,
     reader: &mut BufReader<&TcpStream>,
     downstream: &TcpStream,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let endpoint = child.endpoint();
     let mut upstream = upstream_to(endpoint)?;
     upstream.write_all(head.rewrite(endpoint).as_bytes())?;
@@ -76,7 +76,7 @@ pub(super) fn run(
 /// back behind its own head for as long as the child delays that
 /// acknowledgement. A socket that will not take the setting is still a
 /// connection, and is used as one.
-fn upstream_to(endpoint: SocketAddr) -> std::io::Result<TcpStream> {
+fn upstream_to(endpoint: SocketAddr) -> io::Result<TcpStream> {
     let upstream = TcpStream::connect(endpoint)?;
     drop(upstream.set_nodelay(true));
     Ok(upstream)
@@ -91,7 +91,7 @@ fn forward_body(
     head: &Head,
     reader: &mut BufReader<&TcpStream>,
     upstream: &mut TcpStream,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let mut remaining = head.body_bytes();
     let mut buffer = [0u8; BUFFER];
     while remaining > 0 {
@@ -224,6 +224,7 @@ fn relay_response(mut upstream: &TcpStream, mut downstream: &TcpStream) {
 #[cfg(test)]
 mod tests {
     use std::net::TcpListener;
+    use std::sync::mpsc;
 
     use super::*;
 
@@ -257,7 +258,7 @@ mod tests {
                 }
             }
         });
-        let (done, finished) = std::sync::mpsc::channel();
+        let (done, finished) = mpsc::channel();
         thread::spawn(move || {
             copy_response(&upstream, &downstream);
             done.send(()).ok();

@@ -16,6 +16,7 @@
 //! is refused before anything else happens. A caller that is no browser names
 //! no origin and is unaffected.
 
+use std::env;
 use std::ffi::OsString;
 
 use super::head::Head;
@@ -38,7 +39,7 @@ impl Access {
     /// The rules this machine's environment sets.
     #[must_use]
     pub fn configured() -> Self {
-        Self::from_variables(std::env::var_os(KEY), std::env::var_os(ORIGINS))
+        Self::from_variables(env::var_os(KEY), env::var_os(ORIGINS))
     }
 
     /// The rules these values of the two variables describe.

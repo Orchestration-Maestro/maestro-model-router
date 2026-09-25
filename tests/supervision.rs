@@ -15,6 +15,9 @@
 #![cfg(test)]
 
 use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::process;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -186,11 +189,8 @@ fn a_child_that_exits_while_loading_reports_what_it_said_last() {
 fn a_child_that_loses_the_port_race_once_still_starts_on_the_retry() {
     let root = ModelsRoot::with(&[MODEL]);
     let mut entry = entry("racer");
-    let marker = std::env::temp_dir().join(format!(
-        "model-router-never-bind-marker-{}",
-        std::process::id()
-    ));
-    drop(std::fs::remove_file(&marker));
+    let marker = env::temp_dir().join(format!("model-router-never-bind-marker-{}", process::id()));
+    drop(fs::remove_file(&marker));
     entry
         .flags
         .insert("never-bind-marker".to_owned(), marker.display().to_string());
@@ -206,7 +206,7 @@ fn a_child_that_loses_the_port_race_once_still_starts_on_the_retry() {
          lost the race"
     );
     child.stop();
-    drop(std::fs::remove_file(&marker));
+    drop(fs::remove_file(&marker));
 }
 
 /// The retry is bounded at one: a child that loses the race on both its

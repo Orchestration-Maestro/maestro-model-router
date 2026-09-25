@@ -8,7 +8,7 @@
 #![cfg(test)]
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod common;
 use common::{has_extension, repo_root, sources};
@@ -59,7 +59,7 @@ fn link_targets(text: &str) -> Vec<String> {
 }
 
 /// The path a link resolves to, or `None` when this gate does not own it.
-fn resolved(document: &Path, target: &str) -> Option<std::path::PathBuf> {
+fn resolved(document: &Path, target: &str) -> Option<PathBuf> {
     if is_external(target) {
         return None;
     }

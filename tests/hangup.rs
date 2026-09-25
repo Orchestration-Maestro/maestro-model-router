@@ -14,6 +14,7 @@
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
+use std::thread;
 use std::time::{Duration, Instant};
 
 mod support;
@@ -82,7 +83,7 @@ fn a_caller_that_hangs_up_during_the_silence_releases_the_model() {
         if status(&reply) == Some(200) {
             break;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(100));
     }
     assert_eq!(
         status(&reply),

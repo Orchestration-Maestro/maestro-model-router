@@ -37,6 +37,7 @@
 
 #![cfg(test)]
 
+use std::thread;
 use std::time::{Duration, Instant};
 
 mod support;
@@ -224,7 +225,7 @@ fn a_resident_outlives_the_window_and_is_still_named() {
     // Several sweeps' worth of time, so a resident that were mistakenly
     // reapable would already be gone. Against `QUICK_WINDOW` rather than
     // `WINDOW`, so proving a non-event stays fast.
-    std::thread::sleep(QUICK_WINDOW * 6);
+    thread::sleep(QUICK_WINDOW * 6);
 
     assert!(
         serving.loaded().iter().any(|id| id == "resident"),
@@ -247,7 +248,7 @@ fn with_no_window_configured_an_entry_idle_far_past_any_window_is_still_named() 
 
     // Far past any window this file uses, against `QUICK_WINDOW` rather than
     // `WINDOW`, so proving a non-event stays fast.
-    std::thread::sleep(QUICK_WINDOW * 6);
+    thread::sleep(QUICK_WINDOW * 6);
 
     assert!(
         serving.loaded().iter().any(|id| id == "gemma3"),

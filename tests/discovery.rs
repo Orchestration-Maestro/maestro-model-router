@@ -9,7 +9,16 @@
 
 #![cfg(test)]
 
+use maestro_model_router::admission::Budget;
 use maestro_model_router::catalog::{Catalog, EstimateSource, Reading, Residency};
+use maestro_model_router::idle::{IdleWindow, Limits};
+use maestro_model_router::launch::Server;
+use maestro_model_router::proxy::{Router, Source};
+use maestro_model_router::queue::Wait;
+use std::fs;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 mod fixtures;
 use fixtures::{Gguf, Scratch, Value};
@@ -71,8 +80,8 @@ fn populated(label: &str) -> Scratch {
     model().write(&at("h/x.gguf"), 4 * MIB);
     model().write(&at("i/x.gguf"), 4 * MIB);
     // Not a model at all.
-    std::fs::create_dir_all(at("g")).expect("mkdir");
-    std::fs::write(at("g/notes.txt"), b"not a model").expect("write");
+    fs::create_dir_all(at("g")).expect("mkdir");
+    fs::write(at("g/notes.txt"), b"not a model").expect("write");
     scratch
 }
 
@@ -246,17 +255,17 @@ fn a_root_with_nothing_to_find_reads_as_the_catalog_alone() {
 fn a_discovered_entry_is_served_like_any_other() {
     let scratch = populated("discovery-served");
     let reading = read(&scratch);
-    let server = maestro_model_router::launch::Server::located(Some(&stub_binary()))
-        .expect("the stub binary is built by cargo test");
-    let limits = maestro_model_router::idle::Limits::new(
-        maestro_model_router::admission::Budget::new(None),
-        maestro_model_router::idle::IdleWindow::new(std::time::Duration::ZERO),
-        maestro_model_router::queue::Wait::new(std::time::Duration::ZERO),
+    let server =
+        Server::located(Some(&stub_binary())).expect("the stub binary is built by cargo test");
+    let limits = Limits::new(
+        Budget::new(None),
+        IdleWindow::new(Duration::ZERO),
+        Wait::new(Duration::ZERO),
     );
-    let router = std::sync::Arc::new(
-        maestro_model_router::proxy::Router::bind(
+    let router = Arc::new(
+        Router::bind(
             &["127.0.0.1:0".parse().expect("a loopback address")],
-            maestro_model_router::proxy::Source {
+            Source {
                 catalog: reading.catalog,
                 // This test never reloads; the path is what `bind` needs to
                 // be able to, not something this asks it to read.
@@ -269,8 +278,8 @@ fn a_discovered_entry_is_served_like_any_other() {
         .expect("an ephemeral loopback port"),
     );
     let address = router.address();
-    let serving = std::sync::Arc::clone(&router);
-    std::thread::spawn(move || serving.serve());
+    let serving = Arc::clone(&router);
+    thread::spawn(move || serving.serve());
 
     let listing = request(address, &get("/v1/models"));
     assert!(

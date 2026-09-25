@@ -9,13 +9,15 @@
 //! Unix only: the search path is built from symlinks, and the signal is sent
 //! through `kill`.
 
+use std::env::{self, consts};
 use std::ffi::OsString;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::net::SocketAddr;
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdout, Command, Stdio};
-use std::thread::sleep;
+use std::process::{self, Child, ChildStdout, Command, ExitStatus, Stdio};
+use std::thread::{self, sleep};
 use std::time::{Duration, Instant};
 
 use super::{ModelsRoot, stub_binary};
@@ -29,10 +31,10 @@ pub struct SearchPath {
 impl SearchPath {
     /// A directory carrying the stub as `llama-server`.
     pub fn with_stub() -> Self {
-        let directory = std::env::temp_dir().join(format!(
+        let directory = env::temp_dir().join(format!(
             "model-router-path-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
+            process::id(),
+            thread::current().id()
         ));
         fs::create_dir_all(&directory).expect("a writable temporary directory");
         Self { directory }.linking("llama-server")
@@ -49,8 +51,8 @@ impl SearchPath {
         // The suffix is derived even here, where it is always empty: the rule
         // is that no file name assumes a platform, and a rule with an
         // exception is a rule that gets copied without it.
-        let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
-        std::os::unix::fs::symlink(stub_binary(), self.directory.join(file))
+        let file = format!("{name}{}", consts::EXE_SUFFIX);
+        symlink(stub_binary(), self.directory.join(file))
             .expect("a symlink in the temporary directory");
         self
     }
@@ -58,10 +60,10 @@ impl SearchPath {
     /// The current search path with this directory in front of it.
     pub fn value(&self) -> OsString {
         let mut paths = vec![self.directory.clone()];
-        if let Some(inherited) = std::env::var_os("PATH") {
-            paths.extend(std::env::split_paths(&inherited));
+        if let Some(inherited) = env::var_os("PATH") {
+            paths.extend(env::split_paths(&inherited));
         }
-        std::env::join_paths(paths).expect("a search path with no separator in it")
+        env::join_paths(paths).expect("a search path with no separator in it")
     }
 }
 
@@ -145,7 +147,7 @@ impl RouterProcess {
     }
 
     /// The exit status, if the router ends before the deadline.
-    pub fn exited_within(&mut self, deadline: Duration) -> Option<std::process::ExitStatus> {
+    pub fn exited_within(&mut self, deadline: Duration) -> Option<ExitStatus> {
         let until = Instant::now() + deadline;
         while Instant::now() < until {
             if let Some(status) = self.process.try_wait().expect("the router's status") {

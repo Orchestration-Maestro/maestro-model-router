@@ -25,6 +25,7 @@
 #![cfg(test)]
 
 use serde_json::Value;
+use std::net::SocketAddr;
 
 mod support;
 use support::{MODEL, ModelsRoot, get, post, reloadable, request, status};
@@ -57,7 +58,7 @@ fn body(reply: &str) -> Value {
 }
 
 /// The window one entry is offered at, as `/models` reports it.
-fn offered_context(address: std::net::SocketAddr, id: &str) -> u64 {
+fn offered_context(address: SocketAddr, id: &str) -> u64 {
     let payload = body(&request(address, &get("/models")));
     let data = payload["data"]
         .as_array()

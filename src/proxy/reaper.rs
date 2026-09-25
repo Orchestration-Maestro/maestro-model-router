@@ -120,7 +120,9 @@ pub(super) fn run(shared: &Weak<Shared>) {
 mod tests {
     use super::*;
     use crate::queue::Wait;
-    use std::sync::Arc;
+    use std::env;
+    use std::sync::{Arc, RwLock};
+    use std::thread;
     use std::time::Instant;
 
     /// The mechanism decision 7 depends on: a wait ends the moment `signal`
@@ -132,8 +134,8 @@ mod tests {
     fn a_wait_ends_the_moment_signal_is_called_rather_than_at_its_timeout() {
         let stop = Arc::new(Stop::new());
         let signalling = Arc::clone(&stop);
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(20));
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(20));
             signalling.signal();
         });
 
@@ -192,14 +194,14 @@ mod tests {
         )
         .expect("a usable catalog");
         let server = Server::located(Some(
-            &std::env::current_exe().expect("this test binary's own path"),
+            &env::current_exe().expect("this test binary's own path"),
         ))
         .expect("this test binary's own path is a file");
         let slots =
             super::super::slots::Slots::new(&catalog, Budget::new(None), Wait::new(Duration::ZERO));
 
         let shared = Arc::new(Shared {
-            catalog: std::sync::RwLock::new(Arc::new(catalog)),
+            catalog: RwLock::new(Arc::new(catalog)),
             // Never read: this test signals a reaper and never reloads.
             source: PathBuf::from("/tmp/unused-catalog.toml"),
             root: PathBuf::from("/tmp"),
@@ -214,12 +216,12 @@ mod tests {
         });
 
         let weak = Arc::downgrade(&shared);
-        let reaping = std::thread::spawn(move || run(&weak));
+        let reaping = thread::spawn(move || run(&weak));
 
         // A brief pause, so the reaper has actually entered its wait before
         // this signals it -- a signal that arrived before the wait began
         // would prove nothing about promptness.
-        std::thread::sleep(Duration::from_millis(50));
+        thread::sleep(Duration::from_millis(50));
 
         let started = Instant::now();
         shared.stop.signal();

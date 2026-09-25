@@ -10,8 +10,10 @@
 //! Like every answer the router gives out of its own state, a scrape starts
 //! nothing.
 
+use crate::build;
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::io;
 use std::net::TcpStream;
 
 use super::{Shared, reply};
@@ -20,7 +22,7 @@ use super::{Shared, reply};
 const TEXT_FORMAT: &str = "text/plain; version=0.0.4";
 
 /// Answers one scrape.
-pub(super) fn answer(stream: &TcpStream, shared: &Shared, head_only: bool) -> std::io::Result<()> {
+pub(super) fn answer(stream: &TcpStream, shared: &Shared, head_only: bool) -> io::Result<()> {
     let catalog = shared.catalog();
     let loaded = shared.slots.loaded(&catalog);
     let held: HashMap<String, Option<u64>> = shared.slots.memory(&catalog).into_iter().collect();
@@ -34,8 +36,8 @@ pub(super) fn answer(stream: &TcpStream, shared: &Shared, head_only: bool) -> st
         [(
             format!(
                 "version=\"{}\",commit=\"{}\"",
-                label(crate::build::VERSION),
-                label(crate::build::COMMIT)
+                label(build::VERSION),
+                label(build::COMMIT)
             ),
             1,
         )],

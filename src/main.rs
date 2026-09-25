@@ -5,21 +5,20 @@
 //! three operands do not earn a dependency, and the dependency would have to
 //! be justified to the same gates as a real one.
 
-use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::process::ExitCode;
+use std::process::{self, ExitCode};
 use std::sync::Arc;
-use std::thread;
 use std::time::Instant;
+use std::{env, fs, io, thread};
 
 use maestro_model_router::admission::Budget;
 use maestro_model_router::catalog::Catalog;
 use maestro_model_router::idle::{IdleWindow, Limits};
 use maestro_model_router::launch::{Server, models_root};
-use maestro_model_router::proxy::{ASSIGNED_WITHIN, Access, Router};
+use maestro_model_router::proxy::{self, ASSIGNED_WITHIN, Access, Router, Source};
 use maestro_model_router::queue::Wait;
-use maestro_model_router::{bench, startup};
+use maestro_model_router::{bench, build, startup};
 
 const USAGE: &str = "usage: model-router check <catalog>\n       \
                      model-router bench <catalog> [model]\n       \
@@ -33,10 +32,10 @@ const DEFAULT_ADDRESS: &str = "127.0.0.1:8080";
 mod check;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = env::args().skip(1).collect();
     match args.as_slice() {
         [flag] if flag == "--version" || flag == "-V" => {
-            println!("{}", maestro_model_router::build::described());
+            println!("{}", build::described());
             ExitCode::SUCCESS
         }
         [command, catalog] if command == "check" => check::check(Path::new(catalog)),
@@ -109,11 +108,11 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
     // The path travels with what was parsed from it: `POST /reload` reads the
     // same file again, and a router handed only the parsed value would have
     // nowhere to read it from.
-    let source = maestro_model_router::proxy::Source {
+    let source = Source {
         catalog: parsed,
         path: catalog.to_path_buf(),
     };
-    maestro_model_router::proxy::await_assigned(&wanted, ASSIGNED_WITHIN, &mut std::io::stderr());
+    proxy::await_assigned(&wanted, ASSIGNED_WITHIN, &mut io::stderr());
     let router = Router::bind(&wanted, source, root, server, limits).map_err(|f| f.to_string())?;
     let router = Arc::new(router);
     for address in router.addresses() {
@@ -134,7 +133,7 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
     }
     println!("{}", startup::idle_window(idle_seconds));
     println!("a streamed reply is passed through as it arrives");
-    println!("{}", maestro_model_router::build::described());
+    println!("{}", build::described());
 
     // Registered after the bind and before anything can start a child: a
     // signal before this point ends a router that has nothing to stop.
@@ -188,7 +187,7 @@ fn stop_on_termination(router: Arc<Router>) -> Result<(), String> {
     ctrlc::set_handler(move || {
         if signalled {
             eprintln!("signalled again: exiting without waiting for the children");
-            std::process::exit(1);
+            process::exit(1);
         }
         signalled = true;
         let stopping = Arc::clone(&router);
@@ -196,7 +195,7 @@ fn stop_on_termination(router: Arc<Router>) -> Result<(), String> {
             let held = stopping.loaded().len();
             stopping.stop();
             println!("stopping: ended {}", children(held));
-            std::process::exit(0);
+            process::exit(0);
         });
     })
     .map_err(|error| format!("cannot handle termination signals: {error}"))

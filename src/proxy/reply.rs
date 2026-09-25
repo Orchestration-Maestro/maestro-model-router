@@ -13,7 +13,7 @@
 //! reply ended.
 
 use std::fmt::Write as _;
-use std::io::{Read as _, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::net::{Shutdown, TcpStream};
 use std::time::{Duration, Instant};
 
@@ -33,7 +33,7 @@ struct Reply<'a> {
 }
 
 impl Reply<'_> {
-    fn write(&self, mut stream: &TcpStream) -> std::io::Result<()> {
+    fn write(&self, mut stream: &TcpStream) -> io::Result<()> {
         let mut text = format!("HTTP/1.1 {} {}\r\n", self.status, reason(self.status));
         // Writing to a String cannot fail, so this says so once rather than
         // dressing an impossibility up as an error this function returns.
@@ -78,7 +78,7 @@ fn reason(status: u16) -> &'static str {
 ///
 /// The headers beyond the framing are the cause's: `Retry-After` when
 /// waiting changes the answer, and `Allow` when the method was the problem.
-pub(super) fn refuse(stream: &TcpStream, refusal: &Refusal) -> std::io::Result<()> {
+pub(super) fn refuse(stream: &TcpStream, refusal: &Refusal) -> io::Result<()> {
     let mut headers = Vec::new();
     if let Some(seconds) = refusal.cause().retry_after_seconds() {
         headers.push(("Retry-After", seconds.to_string()));
@@ -137,7 +137,7 @@ fn linger(stream: &TcpStream) {
 ///
 /// Answered from the catalog and nothing else: listing what can be served is
 /// not a reason to start serving it, so no child is touched.
-pub(super) fn listing(stream: &TcpStream, shared: &Shared, head_only: bool) -> std::io::Result<()> {
+pub(super) fn listing(stream: &TcpStream, shared: &Shared, head_only: bool) -> io::Result<()> {
     let catalog = shared.catalog();
     let data: Vec<serde_json::Value> = catalog
         .entries
@@ -168,7 +168,7 @@ pub(super) fn json(
     stream: &TcpStream,
     value: &serde_json::Value,
     head_only: bool,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     text(stream, "application/json", &value.to_string(), head_only)
 }
 
@@ -179,7 +179,7 @@ pub(super) fn text(
     content_type: &str,
     body: &str,
     head_only: bool,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     Reply {
         status: 200,
         content_type: Some(content_type),
@@ -198,7 +198,7 @@ pub(super) fn text(
 /// operator named, the reach is whatever the routes and the firewall allow,
 /// and narrowing it here would look like a control without being one. Never a
 /// child's business: a preflight asks what is allowed, and the router knows.
-pub(super) fn preflight(stream: &TcpStream, endpoint: &Endpoint) -> std::io::Result<()> {
+pub(super) fn preflight(stream: &TcpStream, endpoint: &Endpoint) -> io::Result<()> {
     let allowed = endpoint.allowed().to_owned();
     Reply {
         status: 204,
@@ -222,7 +222,7 @@ pub(super) fn preflight(stream: &TcpStream, endpoint: &Endpoint) -> std::io::Res
 /// this before it sends a byte of body, and one that is never answered either
 /// hangs or gives up and sends anyway after a fixed delay -- which is what
 /// every `curl` with a body over about a kilobyte was paying per request.
-pub(super) fn proceed(mut stream: &TcpStream) -> std::io::Result<()> {
+pub(super) fn proceed(mut stream: &TcpStream) -> io::Result<()> {
     stream.write_all(b"HTTP/1.1 100 Continue\r\n\r\n")?;
     stream.flush()
 }

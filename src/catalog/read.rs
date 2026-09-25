@@ -97,8 +97,7 @@ pub(super) fn drafts(text: &str) -> Result<Drafts, Report> {
         .map_err(|e| Report::single(format!("the catalog is not valid TOML: {e}")))?;
     let mut drafts = Drafts::default();
     drafts.version = version(&table, &mut drafts.problems);
-    drafts.defaults = defaults(&table, &mut drafts.problems);
-    let defaults = std::mem::take(&mut drafts.defaults);
+    let defaults = defaults(&table, &mut drafts.problems);
     drafts.entries = entries(&table, &defaults, &mut drafts);
     drafts.defaults = defaults;
     Ok(drafts)

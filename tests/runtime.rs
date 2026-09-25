@@ -18,6 +18,7 @@
 #![cfg(test)]
 #![cfg(unix)]
 
+use maestro_model_router::catalog::Catalog;
 use std::fs;
 
 mod support;
@@ -96,7 +97,7 @@ fn a_runtime_that_could_name_a_file_elsewhere_is_refused_by_the_catalog() {
     // executable is configuration that can do anything, so the name is
     // restricted to what a binary suffix can safely be.
     for bad in ["../evil", "with space", "Upper", "with/slash", ""] {
-        let report = maestro_model_router::catalog::Catalog::parse(&one_entry(Some(bad)))
+        let report = Catalog::parse(&one_entry(Some(bad)))
             .expect_err("a runtime that is not a plain name is refused");
         let said = report.to_string();
         assert!(

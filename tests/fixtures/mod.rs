@@ -12,8 +12,11 @@
 //! reason `support` does: Rust has no partially used module.
 #![allow(dead_code)]
 
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{self, SystemTime};
 
 /// One metadata value, in the subset of GGUF types these tests write.
 #[derive(Debug, Clone)]
@@ -171,7 +174,7 @@ fn push_value(out: &mut Vec<u8>, value: &Value) {
 /// platform rather than a machine. Distinct from `support::ModelsRoot`, which
 /// creates empty placeholder files: these tests need files with bytes in them.
 pub struct Scratch {
-    root: std::path::PathBuf,
+    root: PathBuf,
 }
 
 impl Scratch {
@@ -179,13 +182,13 @@ impl Scratch {
     pub fn new(label: &str) -> Self {
         let unique = format!(
             "model-router-{label}-{}-{:?}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
                 .expect("a clock after 1970")
                 .as_nanos(),
-            std::thread::current().id()
+            thread::current().id()
         );
-        let root = std::env::temp_dir().join(unique);
+        let root = env::temp_dir().join(unique);
         fs::create_dir_all(&root).expect("a writable temporary directory");
         Self { root }
     }

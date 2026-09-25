@@ -13,9 +13,10 @@
 
 #![cfg(test)]
 
+use std::env;
 use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::thread::sleep;
+use std::net::{SocketAddr, TcpStream};
+use std::thread::{self, sleep};
 use std::time::{Duration, Instant};
 
 use maestro_model_router::memory::{DeviceMemory, Fixed, Measurement, Probe};
@@ -255,7 +256,7 @@ fn no_budget_at_all_loads_everything_and_unloads_nothing() {
 /// What that first reply *is* differs by case, so it is handed back rather
 /// than judged here. One case needs a stream that began; another is content
 /// with a refusal, the room having genuinely gone.
-fn start_stream(address: std::net::SocketAddr, path: &str, body: &str) -> (TcpStream, String) {
+fn start_stream(address: SocketAddr, path: &str, body: &str) -> (TcpStream, String) {
     let mut stream = TcpStream::connect(address).expect("the router is listening");
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
@@ -447,7 +448,7 @@ fn a_child_that_becomes_busy_during_a_decision_is_not_taken_from_its_slot() {
     // -- the weekly heavy tier, which sets this variable -- while every pull
     // request runs a two-point smoke that still guards the per-iteration slot
     // invariant below.
-    let full_sweep = std::env::var_os("MAESTRO_EVICTION_FULL_SWEEP").is_some();
+    let full_sweep = env::var_os("MAESTRO_EVICTION_FULL_SWEEP").is_some();
     let staggers: &[u64] = if full_sweep {
         &[0, 250, 500, 750, 1_000, 1_500, 2_000, 3_000]
     } else {
@@ -474,7 +475,7 @@ fn a_child_that_becomes_busy_during_a_decision_is_not_taken_from_its_slot() {
         let warm = child_endpoint(&second);
 
         // The path names the model, so this depends on nothing the body says.
-        let reader = std::thread::spawn(move || {
+        let reader = thread::spawn(move || {
             sleep(Duration::from_micros(micros));
             start_stream(
                 address,

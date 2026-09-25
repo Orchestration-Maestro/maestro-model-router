@@ -11,9 +11,12 @@
 //! it. Past the bound the tool is killed and the answer is "unknown", which
 //! is what every caller already handles.
 
+use std::env::{self, consts};
+use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use super::parse;
@@ -49,11 +52,10 @@ pub(super) fn nvidia_smi() -> Option<PathBuf> {
 
 /// Where `nvidia-smi` lives when the search path does not carry it.
 fn known_locations() -> Vec<PathBuf> {
-    let file = format!("{NVIDIA_SMI}{}", std::env::consts::EXE_SUFFIX);
+    let file = format!("{NVIDIA_SMI}{}", consts::EXE_SUFFIX);
     if cfg!(windows) {
-        let system =
-            std::env::var_os("SystemRoot").map(|root| PathBuf::from(root).join("System32"));
-        let vendor = std::env::var_os("ProgramFiles").map(|programs| {
+        let system = env::var_os("SystemRoot").map(|root| PathBuf::from(root).join("System32"));
+        let vendor = env::var_os("ProgramFiles").map(|programs| {
             PathBuf::from(programs)
                 .join("NVIDIA Corporation")
                 .join("NVSMI")
@@ -87,7 +89,7 @@ pub(super) fn query(nvidia_smi: &Path, query: &str) -> Option<String> {
 /// Windows branch is caught by the Linux build rather than by an operator.
 pub(super) fn system_total_mib() -> Option<u64> {
     if cfg!(target_os = "linux") {
-        let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let text = fs::read_to_string("/proc/meminfo").ok()?;
         parse::meminfo_total(&text)
     } else if cfg!(target_os = "macos") {
         let text = output(Command::new("sysctl").args(["-n", "hw.memsize"]))?;
@@ -131,7 +133,7 @@ fn output(command: &mut Command) -> Option<String> {
         .spawn()
         .ok()?;
     let mut stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
+    let reader = thread::spawn(move || {
         let mut text = String::new();
         drop(stdout.read_to_string(&mut text));
         text
@@ -144,7 +146,7 @@ fn output(command: &mut Command) -> Option<String> {
                 let text = reader.join().ok()?;
                 return status.success().then_some(text);
             }
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(POLL),
+            Ok(None) if Instant::now() < deadline => thread::sleep(POLL),
             _ => {
                 drop(child.kill());
                 drop(child.wait());
@@ -158,6 +160,7 @@ fn output(command: &mut Command) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
 
     /// A tool that is not there is an unknown figure, not a failure. Proven
     /// with a name no machine carries, so the test is about absence rather
@@ -176,7 +179,7 @@ mod tests {
     /// matches no test would not do, because running nothing is a success.
     #[test]
     fn a_tool_that_fails_answers_nothing() {
-        let own = std::env::current_exe().expect("this test binary's own path");
+        let own = env::current_exe().expect("this test binary's own path");
         assert_eq!(
             output(Command::new(own).arg("--no-such-flag-in-any-test-harness")),
             None

@@ -7,7 +7,7 @@
 //! began and what it was expected to cost, and that it finished and what it
 //! turned out to cost.
 
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,7 +26,7 @@ use super::Slots;
 /// which would end whichever thread said the line, and a reaper thread that
 /// ends is idle unloading that silently stops.
 pub(in crate::proxy) fn say(line: &str) {
-    drop(writeln!(std::io::stdout(), "{line}"));
+    drop(writeln!(io::stdout(), "{line}"));
 }
 
 impl Slots {

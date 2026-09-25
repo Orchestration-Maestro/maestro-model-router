@@ -9,6 +9,7 @@
 //! that could not start -- the worst of both, since the check is what buys the
 //! confidence.
 
+use std::env::{self, consts};
 use std::path::PathBuf;
 
 /// What the server is called. Located on the search path, never bundled.
@@ -27,9 +28,9 @@ pub(crate) fn runtime_binary(runtime: &str) -> Option<PathBuf> {
 /// The first match for a name on the search path, with the platform's
 /// executable suffix, so the Windows leg finds `llama-server.exe`.
 pub(crate) fn on_search_path(name: &str) -> Option<PathBuf> {
-    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
-    let search = std::env::var_os("PATH")?;
-    std::env::split_paths(&search)
+    let file = format!("{name}{}", consts::EXE_SUFFIX);
+    let search = env::var_os("PATH")?;
+    env::split_paths(&search)
         .map(|directory| directory.join(&file))
         .find(|candidate| candidate.is_file())
 }

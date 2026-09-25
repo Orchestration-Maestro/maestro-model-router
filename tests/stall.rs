@@ -10,6 +10,7 @@
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::thread;
 use std::time::{Duration, Instant};
 
 mod support;
@@ -82,7 +83,7 @@ fn a_caller_that_reads_nothing_of_its_answer_lets_the_model_go() {
         if status(&reply) == Some(200) {
             break;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(100));
     }
     assert_eq!(
         status(&reply),

@@ -17,6 +17,8 @@
 //! built with; [`Probe::Machine`] runs the platform's tools. The router only
 //! ever holds one of these, and nothing that acts on a figure knows which.
 
+use std::path::PathBuf;
+
 mod command;
 mod parse;
 
@@ -96,7 +98,7 @@ pub enum Probe {
 #[derive(Debug)]
 pub struct Machine {
     /// `nvidia-smi`, when the machine has one; where, so it is found once.
-    nvidia_smi: Option<std::path::PathBuf>,
+    nvidia_smi: Option<PathBuf>,
 }
 
 impl Probe {
@@ -158,6 +160,7 @@ impl Probe {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process;
 
     #[test]
     fn a_fixed_probe_answers_with_what_it_was_built_with_for_any_pid() {
@@ -212,7 +215,7 @@ mod tests {
     #[test]
     fn the_machine_probe_measures_this_process_or_says_it_cannot() {
         let probe = Probe::detect();
-        let measured = probe.measure(std::process::id());
+        let measured = probe.measure(process::id());
 
         if cfg!(unix) {
             assert!(

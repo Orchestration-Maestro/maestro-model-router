@@ -13,10 +13,20 @@
 //! gate would rightly refuse.
 #![allow(dead_code)]
 
+use maestro_model_router::admission::Budget;
+use maestro_model_router::catalog::Catalog;
+use maestro_model_router::idle::{IdleWindow, Limits};
+use maestro_model_router::launch::Server;
+use maestro_model_router::memory::Probe;
+use maestro_model_router::proxy::{Access, Router, Source};
+use maestro_model_router::queue::Wait;
+use std::env;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpStream, ToSocketAddrs};
+use std::net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
@@ -68,9 +78,9 @@ impl ModelsRoot {
                 .duration_since(UNIX_EPOCH)
                 .expect("a clock after 1970")
                 .as_nanos(),
-            std::thread::current().id()
+            thread::current().id()
         );
-        let root = std::env::temp_dir().join(unique);
+        let root = env::temp_dir().join(unique);
         fs::create_dir_all(&root).expect("a writable temporary directory");
         for file in files {
             let path = root.join(file);
@@ -210,8 +220,8 @@ pub fn catalog_text(extra: &str) -> String {
 /// remove the files the router resolves entries against while it is still
 /// serving them.
 pub struct Serving {
-    address: std::net::SocketAddr,
-    router: std::sync::Arc<maestro_model_router::proxy::Router>,
+    address: SocketAddr,
+    router: Arc<Router>,
     _root: ModelsRoot,
     /// The catalog file this router reads, for the tests that rewrite it.
     ///
@@ -236,7 +246,7 @@ impl Drop for Serving {
 impl Serving {
     /// Where the router is listening.
     #[must_use]
-    pub fn address(&self) -> std::net::SocketAddr {
+    pub fn address(&self) -> SocketAddr {
         self.address
     }
 
@@ -305,7 +315,7 @@ pub fn settled(serving: &Serving, expected: &str, done: impl Fn(&Serving) -> boo
         if done(serving) {
             return;
         }
-        std::thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(20));
     }
     panic!(
         "the router never {expected}; loaded {:?}, resident failures {:?}",
@@ -363,7 +373,7 @@ pub fn windowed(
     launched(
         catalog,
         root,
-        maestro_model_router::admission::Budget::new(limit_mib),
+        Budget::new(limit_mib),
         idle_window,
         Duration::ZERO,
     )
@@ -382,13 +392,7 @@ pub fn windowed(
 /// test rather than a failing one.
 #[must_use]
 pub fn queued(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, wait: Duration) -> Serving {
-    launched(
-        catalog,
-        root,
-        maestro_model_router::admission::Budget::new(limit_mib),
-        Duration::ZERO,
-        wait,
-    )
+    launched(catalog, root, Budget::new(limit_mib), Duration::ZERO, wait)
 }
 
 /// The same, under a stated memory budget, on a machine whose figures the
@@ -404,16 +408,11 @@ pub fn queued(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, wait: Dur
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn probed(
-    catalog: &str,
-    root: ModelsRoot,
-    limit_mib: Option<u32>,
-    probe: maestro_model_router::memory::Probe,
-) -> Serving {
+pub fn probed(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, probe: Probe) -> Serving {
     launched(
         catalog,
         root,
-        maestro_model_router::admission::Budget::with_probe(limit_mib, probe),
+        Budget::with_probe(limit_mib, probe),
         Duration::ZERO,
         Duration::ZERO,
     )
@@ -440,7 +439,7 @@ pub fn reloadable(catalog: &str, root: ModelsRoot) -> Serving {
     launched(
         catalog,
         root,
-        maestro_model_router::admission::Budget::new(None),
+        Budget::new(None),
         Duration::ZERO,
         Duration::ZERO,
     )
@@ -451,15 +450,11 @@ pub fn reloadable(catalog: &str, root: ModelsRoot) -> Serving {
 fn launched(
     catalog: &str,
     root: ModelsRoot,
-    budget: maestro_model_router::admission::Budget,
+    budget: Budget,
     idle_window: Duration,
     wait: Duration,
 ) -> Serving {
-    let limits = maestro_model_router::idle::Limits::new(
-        budget,
-        maestro_model_router::idle::IdleWindow::new(idle_window),
-        maestro_model_router::queue::Wait::new(wait),
-    );
+    let limits = Limits::new(budget, IdleWindow::new(idle_window), Wait::new(wait));
     launched_with(catalog, root, limits)
 }
 
@@ -500,41 +495,33 @@ pub fn capped(catalog: &str, root: ModelsRoot, connections: usize) -> Serving {
 /// A router serving `catalog` under these rules for who may use it, with no
 /// budget, no idle window and no wait.
 #[must_use]
-pub fn guarded(
-    catalog: &str,
-    root: ModelsRoot,
-    access: maestro_model_router::proxy::Access,
-) -> Serving {
+pub fn guarded(catalog: &str, root: ModelsRoot, access: Access) -> Serving {
     launched_with(catalog, root, open_limits(None).with_access(access))
 }
 
 /// Limits under this budget with no idle window and no wait: what a helper
 /// that is about something else starts from, and adjusts.
-fn open_limits(limit_mib: Option<u32>) -> maestro_model_router::idle::Limits {
-    maestro_model_router::idle::Limits::new(
-        maestro_model_router::admission::Budget::new(limit_mib),
-        maestro_model_router::idle::IdleWindow::new(Duration::ZERO),
-        maestro_model_router::queue::Wait::new(Duration::ZERO),
+fn open_limits(limit_mib: Option<u32>) -> Limits {
+    Limits::new(
+        Budget::new(limit_mib),
+        IdleWindow::new(Duration::ZERO),
+        Wait::new(Duration::ZERO),
     )
 }
 
 /// A router serving `catalog` from `root` within these limits.
-fn launched_with(
-    catalog: &str,
-    root: ModelsRoot,
-    limits: maestro_model_router::idle::Limits,
-) -> Serving {
-    let parsed = maestro_model_router::catalog::Catalog::parse(catalog).expect("a usable catalog");
-    let server = maestro_model_router::launch::Server::located(Some(&stub_binary()))
-        .expect("the stub binary is built by cargo test");
+fn launched_with(catalog: &str, root: ModelsRoot, limits: Limits) -> Serving {
+    let parsed = Catalog::parse(catalog).expect("a usable catalog");
+    let server =
+        Server::located(Some(&stub_binary())).expect("the stub binary is built by cargo test");
     // Where a reload would read from. The helpers that parse a catalog out of
     // a string still name a path, because `bind` takes one: it is the file
     // `reloadable` wrote, or a name nothing put anything at -- in which case
     // a reload reports that it could not read it, which is the truth.
     let source = root.path().join("catalog.toml");
-    let router = maestro_model_router::proxy::Router::bind(
+    let router = Router::bind(
         &["127.0.0.1:0".parse().expect("a loopback address")],
-        maestro_model_router::proxy::Source {
+        Source {
             catalog: parsed,
             path: source,
         },
@@ -544,13 +531,13 @@ fn launched_with(
     )
     .expect("an ephemeral loopback port");
 
-    let router = std::sync::Arc::new(router);
+    let router = Arc::new(router);
     let address = router.address();
     // Detached on purpose: `serve` never returns, so there is nothing to join.
     // The accept loop outlives the test; what must not outlive it is the
     // children, which `Serving`'s Drop ends.
-    let serving = std::sync::Arc::clone(&router);
-    std::thread::spawn(move || serving.serve());
+    let serving = Arc::clone(&router);
+    thread::spawn(move || serving.serve());
     Serving {
         address,
         router,

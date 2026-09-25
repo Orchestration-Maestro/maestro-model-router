@@ -9,7 +9,7 @@
 //! line, or run on a thread -- that is `proxy::reaper`, modelled on
 //! `residents.rs` the way this is modelled on `admission`.
 
-use crate::queue::Wait;
+use std::env;
 use std::ffi::OsString;
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,7 @@ use crate::admission::{Budget, Loaded};
 use crate::catalog::Residency;
 use crate::launch::Failure;
 use crate::proxy::Access;
+use crate::queue::Wait;
 
 /// Where the idle window is configured, mirroring `MAESTRO_MEMORY_BUDGET_MIB`.
 const VARIABLE: &str = "MAESTRO_IDLE_UNLOAD_SECONDS";
@@ -170,7 +171,7 @@ impl IdleWindow {
     /// a whole number of seconds. A window someone set and mistyped must not
     /// silently become no window at all.
     pub fn configured() -> Result<Self, Failure> {
-        Self::from_variable(std::env::var_os(VARIABLE))
+        Self::from_variable(env::var_os(VARIABLE))
     }
 
     /// The window a value of the variable describes, read as

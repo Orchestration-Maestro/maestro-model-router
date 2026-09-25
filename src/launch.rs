@@ -24,9 +24,10 @@
 //! port, polling for readiness, and stopping a process on three operating
 //! systems are all implementation and stay inside.
 
+use std::error;
 use std::fmt;
 use std::net::SocketAddr;
-use std::process::ExitStatus;
+use std::process::{self, ExitStatus};
 
 mod binary;
 mod invocation;
@@ -92,7 +93,7 @@ impl fmt::Display for Failure {
     }
 }
 
-impl std::error::Error for Failure {}
+impl error::Error for Failure {}
 
 /// Whether a child process still exists.
 ///
@@ -111,7 +112,7 @@ pub enum Liveness {
 pub struct Child {
     pub(super) id: String,
     pub(super) address: SocketAddr,
-    pub(super) process: std::process::Child,
+    pub(super) process: process::Child,
     /// What the process has written, passed on and the last of it kept.
     said: output::Said,
 }
@@ -121,7 +122,7 @@ impl Child {
     ///
     /// Its standard output and error must be pipes: each is read on a thread
     /// of its own for as long as the process writes to it.
-    fn spawned(id: String, address: SocketAddr, mut process: std::process::Child) -> Self {
+    fn spawned(id: String, address: SocketAddr, mut process: process::Child) -> Self {
         let said = output::Said::default();
         if let Some(stdout) = process.stdout.take() {
             said.drain(&id, stdout);

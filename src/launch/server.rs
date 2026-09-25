@@ -4,9 +4,11 @@
 //! [`Child`], [`Liveness`] -- lives beside this, because those are the types
 //! that outlive the call and this is only the work that produces them.
 
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use super::binary::{BINARY_NAME, on_search_path, runtime_binary, runtime_named};
@@ -134,7 +136,7 @@ impl Server {
                     false,
                 ));
             }
-            std::thread::sleep(POLL_INTERVAL);
+            thread::sleep(POLL_INTERVAL);
         }
     }
 
@@ -238,7 +240,7 @@ impl Server {
 /// does not retry. The alternatives are worse -- passing the descriptor to the
 /// child is not portable to Windows, and a fixed base port with an offset
 /// collides with whatever else is already on the machine.
-fn free_port() -> std::io::Result<u16> {
+fn free_port() -> io::Result<u16> {
     let listener = TcpListener::bind((invocation::HOST, 0))?;
     let port = listener.local_addr()?.port();
     Ok(port)

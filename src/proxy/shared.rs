@@ -12,6 +12,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::time::Duration;
 
 use super::reaper::Stop;
 use super::slots::Slots;
@@ -60,7 +61,7 @@ pub(super) struct Shared {
     /// Who may use the router, checked before anything else is done.
     pub(super) access: super::Access,
     /// How long a caller may make no progress before it is given up on.
-    pub(super) stall: std::time::Duration,
+    pub(super) stall: Duration,
     /// How many connections are answered at once.
     pub(super) permits: super::listen::Permits,
     /// Wakes the reaper the moment [`Router::stop`] is called. See

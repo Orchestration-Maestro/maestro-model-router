@@ -5,6 +5,7 @@
 //! decision: the root those locations resolve against, read at run time and
 //! never written into a tracked file.
 
+use std::env;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -24,7 +25,7 @@ const VARIABLE: &str = "MAESTRO_MODELS_ROOT";
 /// Returns a [`Failure`] when neither the variable nor a home directory is
 /// set, because there is then nowhere to resolve against.
 pub fn models_root() -> Result<PathBuf, Failure> {
-    models_root_from(std::env::var_os(VARIABLE), home_directory())
+    models_root_from(env::var_os(VARIABLE), home_directory())
 }
 
 /// The directory catalog locations resolve against, from the variable's value
@@ -59,5 +60,5 @@ pub fn models_root_from(
 /// The home directory, from whichever variable the platform keeps it in.
 fn home_directory() -> Option<PathBuf> {
     let variable = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(variable).map(PathBuf::from)
+    env::var_os(variable).map(PathBuf::from)
 }

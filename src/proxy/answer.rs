@@ -10,18 +10,18 @@
 //! forwarded, which is what makes a status still possible. Once the relay
 //! starts, it does not come back here.
 
-use std::io::BufReader;
+use std::io::{self, BufReader};
 use std::net::TcpStream;
 
 mod own;
 
 use super::endpoint::Endpoint;
-use super::head::{Head, Length};
+use super::head::{self, Head, Length};
 use super::refusal::{Cause, Refusal};
-use super::{Shared, body, head, metrics, relay, reply};
+use super::{Shared, body, metrics, relay, reply};
 
 /// Answers one connection.
-pub(super) fn to(shared: &Shared, stream: &TcpStream) -> std::io::Result<()> {
+pub(super) fn to(shared: &Shared, stream: &TcpStream) -> io::Result<()> {
     // A caller that sends none of its request, or reads none of its answer,
     // for this long is given up on: the watch sees a caller leave, not one
     // that stays and does nothing. Set on the socket, so the clone the head

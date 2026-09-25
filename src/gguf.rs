@@ -28,6 +28,7 @@
 //! 1 used narrower lengths and predates every file the router will meet.
 
 use std::collections::BTreeMap;
+use std::error;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
@@ -47,7 +48,7 @@ impl fmt::Display for Fault {
     }
 }
 
-impl std::error::Error for Fault {}
+impl error::Error for Fault {}
 
 /// The most pairs a file may declare. Real files carry a few dozen; a count
 /// past this is a corrupt header, not a large model.

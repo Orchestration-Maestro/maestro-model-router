@@ -15,6 +15,7 @@
 //! expires is the wait, not the request: a caller that waited the whole window
 //! and still found no room gets the refusal it would have got immediately.
 
+use std::env;
 use std::ffi::OsString;
 use std::time::Duration;
 
@@ -59,7 +60,7 @@ impl Wait {
     /// not silently become the default, because the difference is whether a
     /// caller is held or answered.
     pub fn configured() -> Result<Self, Failure> {
-        Self::from_variable(std::env::var_os(VARIABLE))
+        Self::from_variable(env::var_os(VARIABLE))
     }
 
     /// The wait a value of the variable describes, read as

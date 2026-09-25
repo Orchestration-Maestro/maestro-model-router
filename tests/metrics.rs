@@ -8,6 +8,7 @@
 #![cfg(test)]
 
 mod support;
+use std::net::SocketAddr;
 use support::{MODEL, ModelsRoot, budgeted, catalog_text, get, post, request, serving, status};
 
 /// Two entries, so a scrape can say one is loaded and the other is not.
@@ -16,7 +17,7 @@ fn two_entries() -> String {
 }
 
 /// The body of a scrape, having checked it is one.
-fn scrape(address: std::net::SocketAddr) -> String {
+fn scrape(address: SocketAddr) -> String {
     let reply = request(address, &get("/metrics"));
     assert_eq!(status(&reply), Some(200), "got:\n{reply}");
     assert!(

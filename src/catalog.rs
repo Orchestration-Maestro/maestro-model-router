@@ -31,6 +31,7 @@ pub use path::RelativePath;
 pub use resolve::{EstimateSource, Reading};
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::error;
 use std::fmt;
 
 /// Everything wrong with one catalog, gathered in a single pass.
@@ -66,7 +67,7 @@ impl fmt::Display for Report {
     }
 }
 
-impl std::error::Error for Report {}
+impl error::Error for Report {}
 
 /// Whether a model is held loaded or loaded when something asks for it.
 ///

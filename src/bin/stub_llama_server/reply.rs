@@ -17,7 +17,8 @@
 //! serialised, truncated, doubled -- would otherwise pass every test in the
 //! repository, the request having been the one thing nothing looked at.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::fs;
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::thread;
@@ -60,12 +61,7 @@ pub struct Pacing {
 ///
 /// Returns whatever the socket returned. Every error here is a client that
 /// hung up, which the caller drops: nothing in this stub is durable.
-pub fn answer(
-    mut stream: TcpStream,
-    ready: bool,
-    pacing: &Pacing,
-    alias: &str,
-) -> std::io::Result<()> {
+pub fn answer(mut stream: TcpStream, ready: bool, pacing: &Pacing, alias: &str) -> io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let head = read_head(&mut reader)?;
 
@@ -110,7 +106,7 @@ pub fn answer(
 }
 
 /// The request line and headers, ending at the first blank line.
-fn read_head(reader: &mut impl BufRead) -> std::io::Result<Vec<String>> {
+fn read_head(reader: &mut impl BufRead) -> io::Result<Vec<String>> {
     let mut lines = Vec::new();
     let mut read = 0usize;
     loop {
@@ -120,7 +116,7 @@ fn read_head(reader: &mut impl BufRead) -> std::io::Result<Vec<String>> {
         }
         read += line.len();
         if read > HEAD_LIMIT {
-            return Err(std::io::Error::other("request head is too large"));
+            return Err(io::Error::other("request head is too large"));
         }
         let trimmed = line.trim_end_matches(['\r', '\n']).to_owned();
         if trimmed.is_empty() {
@@ -141,7 +137,7 @@ fn content_length(head: &[String]) -> usize {
 }
 
 /// The readiness contract: 503 while loading, 200 once ready.
-fn serve_health(stream: &mut TcpStream, ready: bool) -> std::io::Result<()> {
+fn serve_health(stream: &mut TcpStream, ready: bool) -> io::Result<()> {
     let (status, body) = if ready {
         ("200 OK", "{\"status\":\"ok\"}")
     } else {
@@ -159,7 +155,7 @@ fn serve_complete(
     status: &str,
     content_type: &str,
     body: &str,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     write!(
         stream,
         "HTTP/1.1 {status}\r\n\
@@ -178,7 +174,7 @@ fn serve_complete(
 /// The flush is the whole point. A stub that buffered its own output would
 /// make the router's streaming test vacuous: the events would arrive together
 /// whatever the relay did with them.
-fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> std::io::Result<()> {
+fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> io::Result<()> {
     if !silent_for(stream, pacing.first_byte_after)? {
         // Cancelled, as `llama-server` cancels a request whose client has
         // closed its end: nothing is written, and the connection is dropped.
@@ -217,7 +213,7 @@ fn serve_stream(stream: &mut TcpStream, pacing: &Pacing) -> std::io::Result<()> 
 /// looking every [`LOOK_AGAIN`] for a client that closed its end, as
 /// `llama-server` does while a request runs. `false` when one did. Anything
 /// else -- a reset, bytes after the request -- is the first write's to settle.
-fn silent_for(stream: &TcpStream, silence: Duration) -> std::io::Result<bool> {
+fn silent_for(stream: &TcpStream, silence: Duration) -> io::Result<bool> {
     let deadline = Instant::now() + silence;
     let mut byte = [0u8; 1];
     stream.set_nonblocking(true)?;
@@ -238,12 +234,12 @@ fn silent_for(stream: &TcpStream, silence: Duration) -> std::io::Result<bool> {
 /// Records that the client went away, where a test can see it.
 fn went_away(pacing: &Pacing) {
     if let Some(marker) = &pacing.hangup_marker {
-        drop(std::fs::write(marker, b"the caller went away"));
+        drop(fs::write(marker, b"the caller went away"));
     }
 }
 
 /// One event, flushed so it leaves this process when it is produced.
-fn write_event(stream: &mut TcpStream, index: usize) -> std::io::Result<()> {
+fn write_event(stream: &mut TcpStream, index: usize) -> io::Result<()> {
     write!(stream, "data: {{\"n\":{index}}}\n\n")?;
     stream.flush()
 }

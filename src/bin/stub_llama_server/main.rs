@@ -14,9 +14,12 @@
 //! It is never released. The shared release workflow takes the name of one
 //! binary, and that binary is `model-router`.
 
+use std::env;
+use std::fs;
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{self, ExitCode};
+use std::str::FromStr;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -49,7 +52,7 @@ struct Options {
 }
 
 fn main() -> ExitCode {
-    let options = match parse(std::env::args().skip(1)) {
+    let options = match parse(env::args().skip(1)) {
         Ok(options) => options,
         Err(complaint) => {
             eprintln!("stub-llama-server: {complaint}");
@@ -65,7 +68,7 @@ fn main() -> ExitCode {
     // cost, so this one behaves as asked.
     if let Some(marker) = &options.never_bind_marker {
         if !marker.exists() {
-            if let Err(error) = std::fs::write(marker, b"") {
+            if let Err(error) = fs::write(marker, b"") {
                 eprintln!("stub-llama-server: cannot write never-bind marker: {error}");
             }
             return ExitCode::FAILURE;
@@ -98,7 +101,7 @@ fn main() -> ExitCode {
                 "stub-llama-server: exiting with code {code} after {} ms, as asked",
                 after.as_millis()
             );
-            std::process::exit(i32::from(code));
+            process::exit(i32::from(code));
         });
     }
 
@@ -200,7 +203,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
     })
 }
 
-fn number<T: std::str::FromStr>(value: &str, flag: &str) -> Result<T, String> {
+fn number<T: FromStr>(value: &str, flag: &str) -> Result<T, String> {
     value
         .parse()
         .map_err(|_| format!("{flag} takes a number, not '{value}'"))

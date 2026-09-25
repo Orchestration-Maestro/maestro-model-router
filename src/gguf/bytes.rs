@@ -7,7 +7,7 @@
 //! and hands back one value or steps past it; none of them knows a key name.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{self, BufReader, Read};
 
 use super::Fault;
 
@@ -15,8 +15,8 @@ pub(super) type Reader = BufReader<File>;
 
 /// A read that ended inside a value, which is what every I/O failure past
 /// the open amounts to.
-impl From<std::io::Error> for Fault {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for Fault {
+    fn from(error: io::Error) -> Self {
         Self(format!("ends inside its metadata: {error}"))
     }
 }
