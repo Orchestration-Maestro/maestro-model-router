@@ -456,12 +456,13 @@ fn a_draft_and_a_projector_are_counted_with_the_weights() {
 
 /// A draft that is a model of its own keeps a cache of its own; a prediction
 /// head, which `spec-type` names, predicts from its parent's and keeps none.
+///
+/// The draft is thirty-two layers of the small model's shape: 16 MiB of cache
+/// at the same context, on top of 16 MiB of weights.
 #[test]
 fn only_a_draft_that_is_a_model_of_its_own_is_charged_a_cache() {
     let scratch = Scratch::new("catalog-draft-cache");
     small_model().write(&scratch.path().join("a/model.gguf"), 64 * MIB);
-    // Thirty-two layers of the small model's shape: 16 MiB of cache at the
-    // same context, on top of 16 MiB of weights.
     Gguf::model("tiny", 32, 8192, 256)
         .with("tiny.attention.head_count", Value::U32(4))
         .with("tiny.attention.head_count_kv", Value::U32(2))
