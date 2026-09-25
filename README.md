@@ -612,18 +612,20 @@ that point closes the connection rather than pretending it can still answer.
 ## 🛠️ Local commands
 
 ```sh
-scripts/bootstrap.sh   # once per clone: Rust, the pinned toolbelt in .tools/, the hooks
-just check             # the quality commands rust-workflows runs in CI, run here
-just serving           # what the router is holding, before interrupting it
-just deploy            # build HEAD, install it, restart once nothing is in flight
+cargo install --locked --git https://github.com/Orchestration-Maestro/rust-workflows \
+  --tag v4.0.0 rust-gate
+rust-gate setup   # once per clone: the pinned toolbelt and the hooks
+just check        # the quality commands rust-workflows runs in CI, run here
+just serving      # what the router is holding, before interrupting it
+just deploy       # build HEAD, install it, restart once nothing is in flight
 ```
 
-`just` alone lists every recipe, with what it does. Every tool a gate runs is
-pinned in `mise.toml`, and `mise.lock` holds the checksum of each download, so
-the gates run the same releases here as in CI. The bootstrap fetches one
-checksum-verified `mise` for Linux x64 and hands over to `just setup`; Rust
-itself comes from rustup. The pins move once a week, through a pull request
-the tool-updates workflow opens.
+`just` alone lists every recipe, with what it does. Rust itself comes from
+rustup. Every tool a gate runs is pinned by rust-workflows, which checks the
+checksum of each download, so the gates run the same releases here as in CI:
+`rust-gate setup` installs them into one per-user directory the justfile puts
+on its PATH
+([details](https://github.com/Orchestration-Maestro/rust-workflows/blob/v4.0.0/docs/ci.md#the-tools-on-your-machine)).
 
 ## 📚 Documentation
 

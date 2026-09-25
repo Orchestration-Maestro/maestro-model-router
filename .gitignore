@@ -45,8 +45,6 @@ htmlcov/
 .hypothesis/
 
 # ── Editors and tooling ─────────────────────────────────────────────────────
-# The pinned toolbelt that scripts/bootstrap.sh and `just setup` install
-/.tools/
 .idea/
 *.iml
 .vscode/*
