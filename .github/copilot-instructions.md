@@ -10,9 +10,9 @@ Paths below are relative to this repository. Before editing, read
 [AGENTS.md](../AGENTS.md) for the rules that bind every change,
 [CONTEXT.md](../CONTEXT.md) for the words it uses and
 [CONTRIBUTING.md](https://github.com/Orchestration-Maestro/.github/blob/main/CONTRIBUTING.md)
-for how a change is proposed. The organization's
-[constitution](https://github.com/Orchestration-Maestro/.github/blob/main/CONSTITUTION.md)
-binds every specification, plan, review and release.
+for how a change is proposed. The organization's [golden
+rules](https://github.com/Orchestration-Maestro/.github/blob/main/golden-rules/engineering.md)
+come first: nothing in a specification, a plan or this repository weakens them.
 
 For quality, engineering or security changes, read
 [northstar.md](../docs/standards/northstar.md),
