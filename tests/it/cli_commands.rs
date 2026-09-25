@@ -11,7 +11,6 @@
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::time::Duration;
 
 use crate::support::{MODEL, ModelsRoot, catalog_text};
 
@@ -150,6 +149,8 @@ fn a_known_command_with_the_wrong_number_of_operands_is_answered_with_the_usage(
 
 #[cfg(unix)]
 mod with_the_stub {
+    use std::time::Duration;
+
     use super::*;
     use crate::support::spawned::{RouterProcess, SearchPath};
     use crate::support::{get, request, status};
