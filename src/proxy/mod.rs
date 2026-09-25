@@ -76,5 +76,4 @@ mod slots;
 pub use access::Access;
 pub use listen::{ASSIGNED_WITHIN, await_assigned};
 pub use router::Router;
-use shared::Shared;
 pub use shared::Source;

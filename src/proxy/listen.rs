@@ -27,7 +27,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::answer;
-pub(super) use super::permits::Permits;
+use super::permits::Permits;
 use super::shared::Shared;
 use crate::launch::Failure;
 

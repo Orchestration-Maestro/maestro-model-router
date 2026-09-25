@@ -19,7 +19,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
 use super::access::Access;
-use super::listen::Permits;
+use super::permits::Permits;
 use super::slots::{Lease, Slots};
 use crate::catalog::{Catalog, Entry};
 use crate::idle::IdleWindow;
