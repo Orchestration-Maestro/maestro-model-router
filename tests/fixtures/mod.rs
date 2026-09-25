@@ -137,9 +137,9 @@ fn push_value(out: &mut Vec<u8>, value: &Value) {
             out.extend_from_slice(&6u32.to_le_bytes());
             out.extend_from_slice(&n.to_le_bytes());
         }
-        Value::Bool(b) => {
+        Value::Bool(flag) => {
             out.extend_from_slice(&7u32.to_le_bytes());
-            out.push(u8::from(*b));
+            out.push(u8::from(*flag));
         }
         Value::Text(text) => {
             out.extend_from_slice(&8u32.to_le_bytes());

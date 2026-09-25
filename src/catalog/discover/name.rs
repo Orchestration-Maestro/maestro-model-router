@@ -24,7 +24,7 @@ pub(super) fn is_model(name: &str) -> bool {
         return false;
     }
     if lower
-        .split(|c: char| !c.is_ascii_alphanumeric())
+        .split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| segment.ends_with("mtp"))
     {
         return false;
@@ -76,9 +76,9 @@ pub(super) fn identifier(
 /// Lowercase letters and digits, with every other run collapsed to a hyphen.
 fn sanitised(text: &str) -> String {
     let mut out = String::new();
-    for c in text.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() {
+            out.push(character.to_ascii_lowercase());
         } else if !out.ends_with('-') {
             out.push('-');
         }

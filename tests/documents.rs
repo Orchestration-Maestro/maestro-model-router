@@ -76,7 +76,7 @@ fn no_document_links_to_a_missing_file() {
     let root = repo_root();
     let documents: Vec<_> = sources()
         .into_iter()
-        .filter(|p| has_extension(p, &["md"]))
+        .filter(|path| has_extension(path, &["md"]))
         .collect();
     assert!(!documents.is_empty(), "no document was scanned");
 

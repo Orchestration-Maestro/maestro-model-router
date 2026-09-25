@@ -176,7 +176,7 @@ mod tests {
             },
         });
 
-        assert_eq!(probe.device().map(|d| d.free_mib()), Some(3072));
+        assert_eq!(probe.device().map(|device| device.free_mib()), Some(3072));
         assert_eq!(probe.system_total_mib(), Some(16384));
         assert_eq!(probe.measure(1).largest_mib(), Some(700));
         assert_eq!(probe.measure(99_999).largest_mib(), Some(700));

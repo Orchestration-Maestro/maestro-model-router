@@ -49,6 +49,6 @@ pub(crate) fn sources() -> Vec<PathBuf> {
 /// True when the path carries one of the given extensions.
 pub(crate) fn has_extension(path: &Path, extensions: &[&str]) -> bool {
     path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| extensions.contains(&e))
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extensions.contains(&extension))
 }

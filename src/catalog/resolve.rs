@@ -110,7 +110,7 @@ impl Catalog {
         let discovered: BTreeSet<String> = found.iter().map(|entry| entry.id.clone()).collect();
         ledger.derived.extend(discovered.iter().cloned());
         entries.extend(found);
-        entries.sort_by(|a, b| a.id.cmp(&b.id));
+        entries.sort_by(|left, right| left.id.cmp(&right.id));
 
         Ok(Reading {
             catalog: Self {

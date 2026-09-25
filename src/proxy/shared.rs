@@ -144,7 +144,11 @@ impl Shared {
 
         let previous = self.catalog();
         let names = |catalog: &Catalog| -> Vec<String> {
-            catalog.entries.iter().map(|e| e.id.clone()).collect()
+            catalog
+                .entries
+                .iter()
+                .map(|entry| entry.id.clone())
+                .collect()
         };
         let before = names(&previous);
         let after = names(&parsed);

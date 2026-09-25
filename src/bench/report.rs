@@ -28,8 +28,8 @@ use crate::launch::{Server, models_root};
 /// found, or when a requested entry is not in the catalog. A single entry
 /// that fails to load is reported in its row and does not stop the rest.
 pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
-    let text =
-        fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let text = fs::read_to_string(path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     let parsed = Catalog::parse(&text).map_err(|report| format!("{report}"))?;
     let root = models_root().map_err(|failure| failure.to_string())?;
     let server = Server::located(None).map_err(|failure| failure.to_string())?;

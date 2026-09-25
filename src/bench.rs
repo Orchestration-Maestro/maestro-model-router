@@ -113,7 +113,7 @@ pub fn entry(server: &Server, model: &Entry, root: &Path) -> Result<Measurement,
         .measure(child.pid())
         .device_mib
         .or_else(|| {
-            let (before, after) = (before?, probe.device().map(|d| d.used_mib)?);
+            let (before, after) = (before?, probe.device().map(|device| device.used_mib)?);
             after.checked_sub(before).filter(|grown| *grown > 0)
         })
         .and_then(|mib| u32::try_from(mib).ok());

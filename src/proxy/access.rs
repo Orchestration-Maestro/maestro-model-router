@@ -125,7 +125,9 @@ fn same(carried: &str, key: &str) -> bool {
         && carried
             .bytes()
             .zip(key.bytes())
-            .fold(0u8, |difference, (a, b)| difference | (a ^ b))
+            .fold(0u8, |difference, (carried_byte, key_byte)| {
+                difference | (carried_byte ^ key_byte)
+            })
             == 0
 }
 

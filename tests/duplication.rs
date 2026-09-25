@@ -295,7 +295,7 @@ fn pair_name(line: &str) -> Option<String> {
         return None;
     }
     let (left, right) = line.split_once(" <-> ")?;
-    let name = |s: &str| s.split_whitespace().last().map(str::to_owned);
+    let name = |side: &str| side.split_whitespace().last().map(str::to_owned);
     Some(format!("{} <-> {}", name(left)?, name(right)?))
 }
 
@@ -322,11 +322,11 @@ fn detected() -> BTreeSet<String> {
 )]
 fn no_duplication_is_unaccounted_for() {
     let found = detected();
-    let accepted: BTreeSet<&str> = ACCEPTED.iter().map(|(p, _)| *p).collect();
+    let accepted: BTreeSet<&str> = ACCEPTED.iter().map(|(pair, _)| *pair).collect();
 
     let unexplained: Vec<&String> = found
         .iter()
-        .filter(|p| !accepted.contains(p.as_str()))
+        .filter(|pair| !accepted.contains(pair.as_str()))
         .collect();
 
     assert!(
@@ -336,7 +336,7 @@ fn no_duplication_is_unaccounted_for() {
          file with the reason it should stay.\n",
         unexplained
             .iter()
-            .map(|p| format!("  {p}"))
+            .map(|pair| format!("  {pair}"))
             .collect::<Vec<_>>()
             .join("\n")
     );
@@ -353,8 +353,8 @@ fn no_accepted_pair_has_gone_stale() {
     let found = detected();
     let stale: Vec<&str> = ACCEPTED
         .iter()
-        .map(|(p, _)| *p)
-        .filter(|p| !found.contains(*p))
+        .map(|(pair, _)| *pair)
+        .filter(|pair| !found.contains(*pair))
         .collect();
 
     assert!(
@@ -363,7 +363,7 @@ fn no_accepted_pair_has_gone_stale() {
          Remove them.\n",
         stale
             .iter()
-            .map(|p| format!("  {p}"))
+            .map(|pair| format!("  {pair}"))
             .collect::<Vec<_>>()
             .join("\n")
     );

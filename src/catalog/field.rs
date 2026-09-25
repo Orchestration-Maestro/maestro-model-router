@@ -124,9 +124,9 @@ pub(super) fn as_residency(value: &Value) -> Result<Residency, String> {
 pub(super) fn as_runtime(value: &Value) -> Result<String, String> {
     let text = as_text(value)?;
     let usable = !text.is_empty()
-        && text
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        && text.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        });
     if usable {
         Ok(text)
     } else {

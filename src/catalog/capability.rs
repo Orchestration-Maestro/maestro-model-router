@@ -71,7 +71,7 @@ mod tests {
             runtime: None,
             flags: flags
                 .iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
                 .collect::<BTreeMap<_, _>>(),
         }
     }

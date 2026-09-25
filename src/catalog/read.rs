@@ -94,7 +94,7 @@ pub(super) struct Drafts {
 pub(super) fn drafts(text: &str) -> Result<Drafts, Report> {
     let table = text
         .parse::<Table>()
-        .map_err(|e| Report::single(format!("the catalog is not valid TOML: {e}")))?;
+        .map_err(|error| Report::single(format!("the catalog is not valid TOML: {error}")))?;
     let mut drafts = Drafts::default();
     drafts.version = version(&table, &mut drafts.problems);
     let defaults = defaults(&table, &mut drafts.problems);

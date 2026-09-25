@@ -56,8 +56,8 @@ fn resident_and_on_demand(resident_mib: u32, on_demand_mib: u32) -> String {
 
 /// Waits for the resident to be loaded, which is what startup promises.
 fn resident_loaded(serving: &support::Serving) {
-    settled(serving, "loaded its resident", |s| {
-        s.loaded().iter().any(|id| id == RESIDENT)
+    settled(serving, "loaded its resident", |serving| {
+        serving.loaded().iter().any(|id| id == RESIDENT)
     });
 }
 
@@ -93,8 +93,8 @@ fn a_resident_that_cannot_load_leaves_the_rest_of_the_catalog_serving() {
         ModelsRoot::with(&[MODEL]),
     );
 
-    settled(&serving, "reported its resident as failed", |s| {
-        !s.resident_failures().is_empty()
+    settled(&serving, "reported its resident as failed", |serving| {
+        !serving.resident_failures().is_empty()
     });
 
     let failures = serving.resident_failures();

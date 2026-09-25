@@ -113,7 +113,8 @@ fn serve(catalog: &Path, address: Option<&str>) -> Result<(), String> {
         path: catalog.to_path_buf(),
     };
     proxy::await_assigned(&wanted, ASSIGNED_WITHIN, &mut io::stderr());
-    let router = Router::bind(&wanted, source, root, server, limits).map_err(|f| f.to_string())?;
+    let router = Router::bind(&wanted, source, root, server, limits)
+        .map_err(|failure| failure.to_string())?;
     let router = Arc::new(router);
     for address in router.addresses() {
         println!("serving on http://{address}");

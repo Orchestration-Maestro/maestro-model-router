@@ -177,7 +177,7 @@ fn size_of(path: &Path) -> Option<u64> {
     fs::metadata(path)
         .ok()
         .filter(fs::Metadata::is_file)
-        .map(|m| m.len())
+        .map(|metadata| metadata.len())
 }
 
 /// One shard's place in a split model, read from a name such as
@@ -207,10 +207,10 @@ pub(super) fn shard_of(name: &str) -> Option<Shard<'_>> {
     let (rest, extension) = name.rsplit_once('.')?;
     let (head, total) = rest.rsplit_once("-of-")?;
     let (stem, index) = head.rsplit_once('-')?;
-    if total.is_empty() || !total.bytes().all(|b| b.is_ascii_digit()) {
+    if total.is_empty() || !total.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    if index.len() != total.len() || !index.bytes().all(|b| b.is_ascii_digit()) {
+    if index.len() != total.len() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
     Some(Shard {
