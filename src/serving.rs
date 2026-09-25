@@ -178,15 +178,19 @@ fn until_ended(router: &Arc<Router>) -> Result<(), String> {
 
     let serving = Arc::clone(router);
     let told = Served(ending.clone());
-    let served = thread::spawn(move || {
-        let _told = told;
-        serving.serve();
-    });
+    // Named so that a panic while serving says where it happened.
+    let served = thread::Builder::new()
+        .name("serve".to_owned())
+        .spawn(move || {
+            let _told = told;
+            serving.serve();
+        })
+        .map_err(|error| format!("cannot start serving: {error}"))?;
 
     if let Ending::Served = wait_for_the_end(router, &ending, &endings)? {
         // A serving thread that panicked panics here, as it did when it
-        // served on this one: the same message, already printed, and the
-        // same status.
+        // served on this one: its message is already printed, naming the
+        // `serve` thread rather than `main`, and the status is the same.
         if let Err(payload) = served.join() {
             panic::resume_unwind(payload);
         }
