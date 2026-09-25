@@ -45,5 +45,9 @@ records as the commit on `main`.
 - `GET /metrics` reports what is loaded, what each entry was estimated and
   measured holding, the line waiting for room, the budget and the build, in
   the text format Prometheus scrapes.
+- A request carrying `X-Model-Router-Room: free` is loaded only into free
+  room: one whose model would need another unloaded is refused with `503` and
+  `insufficient_room` before anything is unloaded. Any other value is refused
+  with `400` and `unknown_room`.
 
 Nothing released yet. The first tag will be `v0.1.0`.

@@ -12,6 +12,7 @@ use std::time::Instant;
 
 use crate::catalog::Residency;
 
+use super::head::AllowedRoom;
 use super::shared::Shared;
 
 /// Loads every resident entry, reporting and recording what failed.
@@ -40,7 +41,9 @@ pub(super) fn load(shared: &Shared) {
         .filter(|entry| entry.residency == Residency::Resident)
     {
         let started = Instant::now();
-        match shared.child(entry) {
+        // Any room, as every load had before a caller could ask for less: a
+        // resident is the operator's standing order, not a caller's request.
+        match shared.child(entry, AllowedRoom::Any) {
             Ok(_) => shared.voice.say(&format!(
                 "resident {} loaded in {:.1} seconds",
                 entry.id,

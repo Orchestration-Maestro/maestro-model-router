@@ -23,5 +23,6 @@ mod sweep;
 mod table;
 mod view;
 
+pub(super) use admit::Asked;
 pub(in crate::proxy) use lease::Lease;
 pub(super) use table::Slots;

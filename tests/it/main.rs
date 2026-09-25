@@ -34,6 +34,7 @@ mod document_links;
 mod duplication_allowlist;
 mod english_only;
 mod eviction_policy;
+mod free_room;
 mod gguf_metadata;
 mod idle_unload;
 mod idle_window;

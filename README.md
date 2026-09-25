@@ -440,6 +440,37 @@ A child starts on the first request for its entry and is kept while there is
 room for it, so that request pays the startup cost and every later one finds
 the child ready.
 
+### Loading only into free room
+
+With a budget set, a request for a model that does not fit unloads the coldest
+idle model to make room, as the
+[next section](#what-eviction-does-and-what-it-never-does) describes. A caller
+whose request must never cost another model its place, such as a search that
+embeds a query while somebody is talking to a chat model, says so with a
+header:
+
+```sh
+curl http://127.0.0.1:8080/models/gemma3/v1/chat/completions \
+  -H 'X-Model-Router-Room: free' \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"hello"}]}'
+```
+
+Such a request is admitted only into free room. A model already loaded is
+served as usual, and one that fits in what the budget has left and in what the
+device reports free is loaded as usual. One that could load only by unloading
+another model is refused before anything is unloaded: `503` with
+`insufficient_room`, and a message naming the header and the models that
+would have gone. It is refused at once rather than held in line, because a
+model that stops being busy is still loaded, so waiting would end in the same
+refusal. The header works the same on both endpoints and on
+`POST /models/load`, and a request without it is admitted exactly as before.
+
+The name is read in any case, as every header name is. The value is `free` and
+nothing else: any other, an empty one included, is refused with `400` and
+`unknown_room`, because a misspelt option read as no option would unload the
+very model its caller meant to keep.
+
 ### What eviction does, and what it never does
 
 With a budget set, a model that does not fit causes the coldest idle on-demand
@@ -595,6 +626,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | the method is none a model is asked anything with | `405`, with `Allow` | `method_not_allowed` |
 | the request body announces chunked framing | `501`; send a body with a `Content-Length` | `chunked_body_not_implemented` |
 | the `Content-Length` will not parse | `400`, quoting back what arrived | `malformed_content_length` |
+| `X-Model-Router-Room` carries a value other than `free` | `400`, naming the one it takes | `unknown_room` |
 | the generic endpoint is sent no declared body | `411`, naming the header it wanted | `content_length_required` |
 | the body is larger than the router will read | `413`, naming both sizes | `body_too_large` |
 | the body ends before its declared length | `400` | `body_incomplete` |
@@ -604,6 +636,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | the child misses its startup budget | `504`, naming the budget | `startup_timeout` |
 | the room is held by a request that reached it first | `503`, with `Retry-After` | `room_contended` |
 | nothing can be unloaded to make room | `503`, naming what is holding the memory | `insufficient_room` |
+| the request carries `X-Model-Router-Room: free` and its model would load only by unloading another | `503`, naming the header and the models that would have gone | `insufficient_room` |
 | an unload names a model that is answering a request | `409` | `model_busy` |
 
 Once a response has begun there is no status left to send, so a failure after

@@ -18,8 +18,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
+use super::head::AllowedRoom;
 use super::permits::Permits;
-use super::slots::{Lease, Slots};
+use super::slots::{Asked, Lease, Slots};
 use crate::access::Access;
 use crate::catalog::{Catalog, Entry};
 use crate::idle::IdleWindow;
@@ -145,15 +146,17 @@ impl Shared {
         Arc::clone(&self.catalog.read().unwrap_or_else(PoisonError::into_inner))
     }
 
-    /// The child serving this entry, started if there is room for it.
+    /// The child serving this entry, started if there is room for it that
+    /// its caller allows.
     ///
     /// # Errors
     ///
     /// Returns a [`Failure`] when a child cannot be started, does not become
     /// ready, or is refused for want of room.
-    pub(super) fn child(&self, entry: &Entry) -> Result<Lease<'_>, Failure> {
+    pub(super) fn child(&self, entry: &Entry, room: AllowedRoom) -> Result<Lease<'_>, Failure> {
+        let asked = Asked { entry, room };
         self.slots
-            .child(&self.catalog(), entry, &self.server, &self.root)
+            .child(&self.catalog(), asked, &self.server, &self.root)
     }
 
     /// What the catalog carries, for a refusal that can be acted on.

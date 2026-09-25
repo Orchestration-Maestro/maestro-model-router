@@ -14,5 +14,5 @@
 mod parsed;
 mod read;
 
-pub(super) use parsed::{Head, Length, parse};
+pub(super) use parsed::{AllowedRoom, Head, Length, ROOM, parse};
 pub(super) use read::{read, timed_out};
