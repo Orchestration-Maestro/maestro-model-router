@@ -211,7 +211,121 @@ fn body_of(reply: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+    use std::sync::mpsc::{self, Receiver};
+    use std::thread;
+
     use super::*;
+    use crate::catalog::Catalog;
+
+    /// An entry carrying these flags, as a catalog would give it.
+    fn entry(flags: &str) -> Entry {
+        let text = format!(
+            "version = 1\n[models.alpha]\npath = \"a.gguf\"\ncontext_size = 4096\n\
+             memory_estimate_mib = 512\n[models.alpha.flags]\n{flags}"
+        );
+        let catalog = Catalog::parse(&text).expect("a valid entry");
+        catalog.entries.into_iter().next().expect("one entry")
+    }
+
+    /// A server that answers one request with `body`, and sends back the
+    /// request line and the body it was sent.
+    ///
+    /// Received with a deadline rather than joined, so that a measurement
+    /// which never asks fails its test instead of hanging the run.
+    fn answering(body: &'static str) -> (SocketAddr, Receiver<(String, String)>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let endpoint = listener.local_addr().expect("a bound address");
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("the measuring request");
+            let request = request_of(&stream);
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .expect("the reply");
+            sender.send(request)
+        });
+        (endpoint, receiver)
+    }
+
+    /// The request line of one request, and the body its length declared.
+    fn request_of(stream: &TcpStream) -> (String, String) {
+        let mut reader = BufReader::new(stream);
+        let mut request_line = String::new();
+        reader.read_line(&mut request_line).expect("a request line");
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("a header");
+            if line.trim().is_empty() {
+                break;
+            }
+            if let Some(value) = line.strip_prefix("Content-Length:") {
+                length = value.trim().parse().expect("a length");
+            }
+        }
+        let mut sent = vec![0; length];
+        reader.read_exact(&mut sent).expect("the declared body");
+        let sent = String::from_utf8(sent).expect("a text body");
+        (request_line.trim_end().to_owned(), sent)
+    }
+
+    /// What the server was asked, or a failure after five seconds.
+    fn asked(server: &Receiver<(String, String)>) -> (String, String) {
+        server
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the measurement asked the server within five seconds")
+    }
+
+    #[test]
+    fn a_generative_entry_is_rated_by_what_the_server_reports() {
+        let (endpoint, server) = answering(r#"{"timings":{"predicted_per_second":42.5}}"#);
+
+        let rate = of(endpoint, &entry(""));
+        let (request_line, _) = asked(&server);
+
+        assert_eq!(rate, Some(Throughput::Generated(42.5)));
+        assert_eq!(request_line, "POST /v1/chat/completions HTTP/1.1");
+    }
+
+    #[test]
+    fn a_scoring_entry_is_rated_by_its_passages_over_the_round_trip() {
+        for (flag, path, field) in [
+            ("embeddings", "/v1/embeddings", "input"),
+            ("reranking", "/v1/rerank", "documents"),
+        ] {
+            let (endpoint, server) = answering(r#"{"data":[]}"#);
+
+            let started = Instant::now();
+            let rate = of(endpoint, &entry(&format!("{flag} = \"true\"\n")));
+            let bound = started.elapsed().as_secs_f64();
+            let (request_line, sent) = asked(&server);
+
+            let Some(Throughput::Scored(rate)) = rate else {
+                panic!("{flag}: a passage rate, not {rate:?}");
+            };
+            let seconds = f64::from(PASSAGES) / rate;
+            assert!(
+                seconds > 0.0 && seconds <= bound,
+                "{flag}: {PASSAGES} passages at {rate}/s took {seconds}s, \
+                 inside a call that took {bound}s"
+            );
+            assert_eq!(request_line, format!("POST {path} HTTP/1.1"));
+            let sent: serde_json::Value = serde_json::from_str(&sent).expect("a JSON body");
+            let passages = sent[field].as_array().expect("the passages");
+            assert_eq!(passages.len(), 32, "{flag}: the fixed batch");
+            assert!(
+                passages[31]
+                    .as_str()
+                    .is_some_and(|passage| passage.starts_with("Passage 31. ")),
+                "{flag}: each passage numbered: {sent}"
+            );
+        }
+    }
 
     fn flags(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs

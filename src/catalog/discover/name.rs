@@ -112,6 +112,19 @@ mod tests {
     }
 
     #[test]
+    fn a_name_with_no_way_to_tell_it_apart_is_skipped_with_a_note() {
+        let mut taken = BTreeSet::from(["x".to_owned(), "b-x".to_owned()]);
+        let mut notes = Vec::new();
+
+        let beside = identifier(Path::new("/somewhere/b/x.gguf"), &mut taken, &mut notes);
+        let bare = identifier(Path::new("x.gguf"), &mut taken, &mut notes);
+
+        assert_eq!(beside, None, "its directory's name is taken as well");
+        assert_eq!(bare, None, "it has no directory to be told apart by");
+        assert_eq!(notes.len(), 2, "each skip is said: {notes:?}");
+    }
+
+    #[test]
     fn an_identifier_is_the_stem_lowercased_and_hyphenated() {
         assert_eq!(sanitised("Qwen3.8-27B-UD-Q6_K"), "qwen3-8-27b-ud-q6-k");
         assert_eq!(sanitised("--Odd__Name--"), "odd-name");

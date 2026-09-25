@@ -94,10 +94,7 @@ pub fn entry(server: &Server, model: &Entry, root: &Path) -> Result<Measurement,
     let measured_mib = probe
         .measure(child.pid())
         .device_mib
-        .or_else(|| {
-            let (before, after) = (before?, probe.device().map(|device| device.used_mib)?);
-            after.checked_sub(before).filter(|grown| *grown > 0)
-        })
+        .or_else(|| grown(before?, probe.device()?.used_mib))
         .and_then(|mib| u32::try_from(mib).ok());
     let throughput = rate::of(child.endpoint(), model);
 
@@ -110,6 +107,11 @@ pub fn entry(server: &Server, model: &Entry, root: &Path) -> Result<Measurement,
         load,
         throughput,
     })
+}
+
+/// What the card gained across the load, or `None` when it gained nothing.
+fn grown(before: u64, after: u64) -> Option<u64> {
+    after.checked_sub(before).filter(|grown| *grown > 0)
 }
 
 #[cfg(test)]
@@ -174,6 +176,13 @@ mod tests {
             assert_eq!(wants % 256, 0, "{measured} rounded to {wants}");
             assert!(wants >= measured + measured / 20);
         }
+    }
+
+    #[test]
+    fn only_a_card_that_grew_across_the_load_measures_the_entry() {
+        assert_eq!(grown(1_000, 1_512), Some(512));
+        assert_eq!(grown(1_000, 1_000), None, "no growth is no reading");
+        assert_eq!(grown(1_000, 900), None, "nor is a card that let go");
     }
 
     #[test]

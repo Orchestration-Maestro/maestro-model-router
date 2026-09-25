@@ -355,14 +355,17 @@ fn a_declared_estimate_at_or_above_the_derived_one_earns_no_note() {
     let scratch = Scratch::new("catalog-over");
     small_model().write(&scratch.path().join("a/model.gguf"), 64 * MIB);
 
-    let reading = Catalog::read(&one_entry("memory_estimate_mib = 2048"), scratch.path())
-        .expect("a declared estimate is never a problem");
+    for declared in [SMALL_MODEL_MIB, 2048] {
+        let estimate = format!("memory_estimate_mib = {declared}");
+        let reading = Catalog::read(&one_entry(&estimate), scratch.path())
+            .expect("a declared estimate is never a problem");
 
-    assert!(
-        reading.notes.iter().all(|note| !note.contains("alpha")),
-        "an estimate that errs on the safe side is not worth a line:\n{:?}",
-        reading.notes
-    );
+        assert!(
+            reading.notes.iter().all(|note| !note.contains("alpha")),
+            "an estimate of {declared} MiB errs on the safe side and is not worth a line:\n{:?}",
+            reading.notes
+        );
+    }
 }
 
 #[test]
@@ -381,6 +384,18 @@ fn an_absent_estimate_with_no_file_to_derive_it_from_is_a_problem() {
         report.contains("model.gguf"),
         "and the file it would have measured:\n{report}"
     );
+}
+
+#[test]
+fn a_problem_in_the_text_fails_a_read_even_when_every_file_is_there() {
+    let scratch = Scratch::new("catalog-text-problem");
+    small_model().write(&scratch.path().join("a/model.gguf"), 64 * MIB);
+
+    let report = Catalog::read(&one_entry("colour = \"red\""), scratch.path())
+        .expect_err("a field the catalog does not know is a problem")
+        .to_string();
+
+    assert!(report.contains("colour"), "{report}");
 }
 
 #[test]
@@ -436,6 +451,39 @@ fn a_draft_and_a_projector_are_counted_with_the_weights() {
             .expect("alpha")
             .memory_estimate_mib,
         1119
+    );
+}
+
+/// A draft that is a model of its own keeps a cache of its own; a prediction
+/// head, which `spec-type` names, predicts from its parent's and keeps none.
+///
+/// The draft is thirty-two layers of the small model's shape: 16 MiB of cache
+/// at the same context, on top of 16 MiB of weights.
+#[test]
+fn only_a_draft_that_is_a_model_of_its_own_is_charged_a_cache() {
+    let scratch = Scratch::new("catalog-draft-cache");
+    small_model().write(&scratch.path().join("a/model.gguf"), 64 * MIB);
+    Gguf::model("tiny", 32, 8192, 256)
+        .with("tiny.attention.head_count", Value::U32(4))
+        .with("tiny.attention.head_count_kv", Value::U32(2))
+        .write(&scratch.path().join("a/draft.gguf"), 16 * MIB);
+    let charged = |flags: &str| {
+        let text = one_entry(&format!("draft_path = \"a/draft.gguf\"\n{flags}"));
+        Catalog::read(&text, scratch.path())
+            .expect("derivable")
+            .catalog
+            .entry("alpha")
+            .expect("alpha")
+            .memory_estimate_mib
+    };
+
+    // 80 MiB of weights and 4 MiB of fragmentation, 2 MiB of the model's own
+    // cache and 1024 MiB of overhead: 1110 MiB, before the draft's cache.
+    assert_eq!(charged(""), 1126, "an independent draft's 16 MiB of cache");
+    assert_eq!(
+        charged("[models.alpha.flags]\nspec-type = \"mtp\""),
+        1110,
+        "a prediction head is charged no cache"
     );
 }
 
