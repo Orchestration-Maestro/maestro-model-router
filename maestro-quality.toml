@@ -62,3 +62,12 @@ rule = "ARC-005"
 path = "tests/it/support/mod.rs"
 item = "windowed"
 reason = "a launcher of the support family, built on the shared private launch code"
+
+# TST-001 finds a wait on time in a test. This one is an offset rather than a
+# wait, for the reason it gives.
+
+[[exception]]
+rule = "TST-001"
+path = "tests/it/eviction_policy.rs"
+item = "a_child_that_becomes_busy_during_a_decision_is_not_taken_from_its_slot"
+reason = "the race sweep staggers the reader's start by 0 to 3000 microseconds to exercise interleavings of a stream with an eviction; it is an offset, not a wait, so there is no condition to wait on"
