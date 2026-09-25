@@ -1,56 +1,18 @@
-//! What loading an entry is expected to cost, worked out from its files.
+//! Summing the four terms into one figure, from the files an entry names.
 //!
-//! An estimate decides what fits, and one written by hand is the figure most
-//! likely to be wrong: the audit that led here found the shipped ones two to
-//! four and a half times below what the same models measured once loaded,
-//! because nothing derived the cache from the context size. This derives it.
-//!
-//! The figure is the sum of four terms, in bytes, rounded up to whole
-//! mebibytes:
-//!
-//! - **weights**: the size of every file the entry names -- all the shards of
-//!   a split model, the draft model, and the projector;
-//! - **cache**: for the model, and for a draft that keeps one of its own,
-//!   keys and values for every layer at the configured context:
-//!   `layers x context x kv_heads x (key_length + value_length) x bytes`,
-//!   where a missing key length is the embedding width over the head count,
-//!   a missing value length is the key length, and bytes per element follows
-//!   the cache-type flags (`ctk`/`ctv`, or their long spellings): f16 and
-//!   bf16 hold 2, f32 holds 4, `q8_0` holds 1.0625, `q4_0` holds 0.5625, and
-//!   any other spelling is read as f16. A draft used for multiple-token
-//!   prediction (`spec-type` naming `mtp`) is given none: it is a head on the
-//!   model beside it and predicts from that model's cache, while carrying the
-//!   parent's layer count in its own metadata -- so sizing one charges a full
-//!   model's cache to a file a fiftieth its weight;
-//! - **fragmentation**: five percent of the weights, for the allocator's
-//!   rounding and the padding between tensors;
-//! - **overhead**: a fixed 1024 MiB for the device context and the compute
-//!   buffers, which no file records and which a resident that holds no
-//!   layers on the device was still measured to pay.
-//!
-//! An entry that pins every layer to the processor (`n-gpu-layers = 0`) is
-//! charged the overhead and nothing else: the first three terms are all paid
-//! in host memory, and the budget being spent here is the device's.
-//!
-//! A file whose metadata cannot be read is estimated from its size alone: a
-//! quarter again on top, plus the overhead. It is rougher, and it is said.
-//!
-//! Every term errs high on purpose. An estimate above the cost leaves memory
-//! idle; one below it admits a model the machine cannot hold, which is the
-//! failure the budget exists to prevent.
+//! Split from the door above it when `estimate.rs` became `estimate/mod.rs`,
+//! which may only declare. The terms, and why each errs high, are set out
+//! there.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::gguf::Metadata;
 
-mod cache;
-mod served;
-
-use cache::{cache_bytes, sixteenths};
-use served::{keeps_no_cache, predicts_tokens, runs_on_processor};
-
-use super::Entry;
+use super::super::entry::Entry;
+use super::cache::{cache_bytes, sixteenths};
+use super::served::{keeps_no_cache, predicts_tokens, runs_on_processor};
+use super::shard::shard_of;
 
 const MIB: u64 = 1024 * 1024;
 
@@ -59,7 +21,7 @@ const OVERHEAD_BYTES: u64 = 1024 * MIB;
 
 /// What the figure was worked out from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Basis {
+pub(in crate::catalog) enum Basis {
     /// The metadata the model file carries about itself.
     Metadata,
     /// The size of the files, because the metadata could not be read.
@@ -68,7 +30,7 @@ pub(super) enum Basis {
 
 /// A derived estimate, and what it rests on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Derived {
+pub(in crate::catalog) struct Derived {
     pub mib: u32,
     pub basis: Basis,
 }
@@ -80,7 +42,7 @@ pub(super) struct Derived {
 /// Returns the reason when the model file itself cannot be sized, which is
 /// the one input without which there is nothing to derive from. A draft or a
 /// projector that is not there contributes nothing; the start will name it.
-pub(super) fn derive(entry: &Entry, root: &Path) -> Result<Derived, String> {
+pub(in crate::catalog) fn derive(entry: &Entry, root: &Path) -> Result<Derived, String> {
     let model = entry.path.resolve(root);
     let metadata = Metadata::read(&model);
     let mut weights = weights_of(&model, metadata.as_ref().ok())?;
@@ -177,65 +139,5 @@ fn size_of(path: &Path) -> Option<u64> {
     fs::metadata(path)
         .ok()
         .filter(fs::Metadata::is_file)
-        .map(|m| m.len())
-}
-
-/// One shard's place in a split model, read from a name such as
-/// `model-00001-of-00004.gguf`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Shard<'a> {
-    /// The name before the shard suffix, which names the model.
-    pub stem: &'a str,
-    pub index: u64,
-    total: &'a str,
-    extension: &'a str,
-}
-
-impl Shard<'_> {
-    /// The path of another shard of the same model, beside this one.
-    fn sibling(&self, model: &Path, index: u64) -> PathBuf {
-        let width = self.total.len();
-        model.with_file_name(format!(
-            "{}-{index:0width$}-of-{}.{}",
-            self.stem, self.total, self.extension
-        ))
-    }
-}
-
-/// Reads a shard suffix off a file name, if it carries one.
-pub(super) fn shard_of(name: &str) -> Option<Shard<'_>> {
-    let (rest, extension) = name.rsplit_once('.')?;
-    let (head, total) = rest.rsplit_once("-of-")?;
-    let (stem, index) = head.rsplit_once('-')?;
-    if total.is_empty() || !total.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    if index.len() != total.len() || !index.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    Some(Shard {
-        stem,
-        index: index.parse().ok()?,
-        total,
-        extension,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_shard_suffix_is_read_and_its_siblings_named() {
-        let shard = shard_of("Big-Model-00002-of-00004.gguf").expect("a shard");
-        assert_eq!(shard.stem, "Big-Model");
-        assert_eq!(shard.index, 2);
-        assert_eq!(
-            shard.sibling(Path::new("x/Big-Model-00002-of-00004.gguf"), 4),
-            Path::new("x").join("Big-Model-00004-of-00004.gguf")
-        );
-        assert_eq!(shard_of("model.gguf"), None, "no suffix");
-        assert_eq!(shard_of("model-1-of-x.gguf"), None, "not digits");
-        assert_eq!(shard_of("model-1-of-04.gguf"), None, "widths differ");
-    }
+        .map(|metadata| metadata.len())
 }

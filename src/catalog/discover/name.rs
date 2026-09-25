@@ -1,7 +1,7 @@
 //! What a file's name says: whether it is a model on its own, and what the
 //! entry it becomes is called.
 //!
-//! Split from the module above it along the seam the size gate exposed: that
+//! Split from `walk.rs` beside it along the seam the size gate exposed: that
 //! module walks the root and builds entries, and this decides two things
 //! about one name without touching the file behind it.
 
@@ -24,7 +24,7 @@ pub(super) fn is_model(name: &str) -> bool {
         return false;
     }
     if lower
-        .split(|c: char| !c.is_ascii_alphanumeric())
+        .split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| segment.ends_with("mtp"))
     {
         return false;
@@ -76,9 +76,9 @@ pub(super) fn identifier(
 /// Lowercase letters and digits, with every other run collapsed to a hyphen.
 fn sanitised(text: &str) -> String {
     let mut out = String::new();
-    for c in text.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() {
+            out.push(character.to_ascii_lowercase());
         } else if !out.ends_with('-') {
             out.push('-');
         }

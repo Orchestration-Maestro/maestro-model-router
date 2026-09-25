@@ -4,6 +4,7 @@
 //! exposed: `admission` decides what fits under a ceiling, and this decides
 //! what the ceiling is. Nothing here weighs a model against anything.
 
+use std::env;
 use std::ffi::OsString;
 
 use crate::launch::Failure;
@@ -122,7 +123,7 @@ impl Budget {
     /// become whatever the machine would have chosen, because the difference
     /// is whether the ceiling is the one the operator meant.
     pub fn configured() -> Result<Self, Failure> {
-        Self::from_variable(std::env::var_os(VARIABLE), Probe::detect())
+        Self::from_variable(env::var_os(VARIABLE), Probe::detect())
     }
 
     /// The budget a value of the variable describes on a machine that answers
