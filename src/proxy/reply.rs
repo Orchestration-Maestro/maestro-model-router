@@ -343,6 +343,23 @@ mod tests {
     }
 
     #[test]
+    fn a_caller_that_stays_connected_and_sends_nothing_is_let_go_of() {
+        // Nothing more arrives and nothing ends, so only the read's own
+        // timeout wakes the drain. A drain whose read could wait for ever
+        // would hold this thread for as long as the caller held its socket.
+        let (router, caller) = connection();
+        let (drained, ended) = mpsc::channel();
+        thread::spawn(move || {
+            linger(&router);
+            drained.send(()).ok();
+        });
+
+        let outcome = ended.recv_timeout(LINGER * 5);
+        drop(caller);
+        outcome.expect("a silent caller is let go of once the read times out");
+    }
+
+    #[test]
     fn a_caller_that_keeps_sending_is_given_up_on_at_the_deadline() {
         // A trickle: never enough to reach the bound, never a pause long
         // enough for the read to time out, and never an end. Only the
