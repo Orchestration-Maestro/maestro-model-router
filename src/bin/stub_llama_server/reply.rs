@@ -35,7 +35,7 @@ const LOOK_AGAIN: Duration = Duration::from_millis(50);
 const HEAD_LIMIT: usize = 64 * 1024;
 
 /// How the stub was asked to pace a stream.
-pub struct Pacing {
+pub(crate) struct Pacing {
     /// How long a stream stays silent before its first byte, the way a model
     /// reading a long prompt says nothing at all.
     pub first_byte_after: Duration,
@@ -61,7 +61,12 @@ pub struct Pacing {
 ///
 /// Returns whatever the socket returned. Every error here is a client that
 /// hung up, which the caller drops: nothing in this stub is durable.
-pub fn answer(mut stream: TcpStream, ready: bool, pacing: &Pacing, alias: &str) -> io::Result<()> {
+pub(crate) fn answer(
+    mut stream: TcpStream,
+    ready: bool,
+    pacing: &Pacing,
+    alias: &str,
+) -> io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let head = read_head(&mut reader)?;
 

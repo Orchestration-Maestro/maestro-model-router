@@ -276,6 +276,15 @@ const ACCEPTED: &[(&str, &str)] = &[
          reranking without embeddings or the reverse, and the estimate would \
          then be wrong for exactly one of them with nothing to say so.",
     ),
+    (
+        "v3 <-> v2",
+        "Two constructors of an empty file, differing only in the version \
+         number, which is what each exists to name: the current format and \
+         the one before it. The gate matched them once their visibility \
+         narrowed to the test crate. A merged constructor would take the \
+         number as a parameter, and a test would spell `3` where it now \
+         names the current version.",
+    ),
 ];
 
 /// `path:lines function name <-> path:lines function name` -> `name <-> name`.

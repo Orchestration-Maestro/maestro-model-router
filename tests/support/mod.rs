@@ -30,12 +30,12 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
-pub mod spawned;
+pub(crate) mod spawned;
 
 /// The stub server, which stands in for `llama-server` wherever a test needs
 /// a process that answers the health contract without a model behind it.
 #[must_use]
-pub fn stub_binary() -> PathBuf {
+pub(crate) fn stub_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_stub-llama-server"))
 }
 
@@ -43,7 +43,7 @@ pub fn stub_binary() -> PathBuf {
 ///
 /// Hand-written because neither of this repository's two dependencies speaks
 /// HTTP. One request and one status line do not earn a third.
-pub fn health(address: impl ToSocketAddrs) -> Option<u16> {
+pub(crate) fn health(address: impl ToSocketAddrs) -> Option<u16> {
     let mut stream = TcpStream::connect(address).ok()?;
     stream
         .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
@@ -59,7 +59,7 @@ pub fn health(address: impl ToSocketAddrs) -> Option<u16> {
 /// Under the system temporary directory, which the estate's path rule allows
 /// because it names a platform rather than a machine. The files are empty:
 /// nothing in this slice reads a model, it only checks that one is there.
-pub struct ModelsRoot {
+pub(crate) struct ModelsRoot {
     root: PathBuf,
 }
 
@@ -71,7 +71,7 @@ impl ModelsRoot {
     /// If the temporary directory cannot be written, which is a broken
     /// machine rather than a failing test.
     #[must_use]
-    pub fn with(files: &[&str]) -> Self {
+    pub(crate) fn with(files: &[&str]) -> Self {
         let unique = format!(
             "model-router-{}-{:?}",
             SystemTime::now()
@@ -93,7 +93,7 @@ impl ModelsRoot {
     }
 
     #[must_use]
-    pub fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.root
     }
 }
@@ -125,7 +125,7 @@ fn connected(address: impl ToSocketAddrs) -> TcpStream {
 /// Hand-written for the same reason `health` is: neither of this repository's
 /// two dependencies speaks HTTP. One request and one reply do not earn a
 /// third.
-pub fn request(address: impl ToSocketAddrs, raw: &str) -> String {
+pub(crate) fn request(address: impl ToSocketAddrs, raw: &str) -> String {
     let mut stream = connected(address);
     stream.write_all(raw.as_bytes()).expect("write");
     let mut reply = String::new();
@@ -142,7 +142,7 @@ pub fn request(address: impl ToSocketAddrs, raw: &str) -> String {
 /// deliver every event in one read, and the reply text would be identical
 /// either way -- which is why no test in this repository asserts a stream by
 /// its content alone.
-pub fn arrivals(address: impl ToSocketAddrs, raw: &str) -> (String, Vec<Duration>) {
+pub(crate) fn arrivals(address: impl ToSocketAddrs, raw: &str) -> (String, Vec<Duration>) {
     let mut stream = connected(address);
     stream.write_all(raw.as_bytes()).expect("write");
 
@@ -164,13 +164,13 @@ pub fn arrivals(address: impl ToSocketAddrs, raw: &str) -> (String, Vec<Duration
 
 /// A request head with no body, ready to send.
 #[must_use]
-pub fn get(path: &str) -> String {
+pub(crate) fn get(path: &str) -> String {
     format!("GET {path} HTTP/1.1\r\nHost: router\r\nConnection: close\r\n\r\n")
 }
 
 /// A request carrying a JSON body of the length it declares.
 #[must_use]
-pub fn post(path: &str, body: &str) -> String {
+pub(crate) fn post(path: &str, body: &str) -> String {
     format!(
         "POST {path} HTTP/1.1\r\n\
          Host: router\r\n\
@@ -185,12 +185,12 @@ pub fn post(path: &str, body: &str) -> String {
 
 /// The status code a reply carries, or `None` when it carried none.
 #[must_use]
-pub fn status(reply: &str) -> Option<u16> {
+pub(crate) fn status(reply: &str) -> Option<u16> {
     reply.split_whitespace().nth(1)?.parse().ok()
 }
 
 /// The one model file every entry in these tests points at.
-pub const MODEL: &str = "cache/gemma/gemma-3-1b.gguf";
+pub(crate) const MODEL: &str = "cache/gemma/gemma-3-1b.gguf";
 
 /// A catalog carrying one entry called `gemma3`, plus whatever the test adds.
 ///
@@ -198,7 +198,7 @@ pub const MODEL: &str = "cache/gemma/gemma-3-1b.gguf";
 /// catalog reaches the router in the field, and a test that skipped the parser
 /// would be agreeing with itself about the shape.
 #[must_use]
-pub fn catalog_text(extra: &str) -> String {
+pub(crate) fn catalog_text(extra: &str) -> String {
     format!(
         "version = 1\n\
          \n\
@@ -219,7 +219,7 @@ pub fn catalog_text(extra: &str) -> String {
 /// The models root is held here so it outlives the router: dropping it would
 /// remove the files the router resolves entries against while it is still
 /// serving them.
-pub struct Serving {
+pub(crate) struct Serving {
     address: SocketAddr,
     router: Arc<Router>,
     _root: ModelsRoot,
@@ -246,25 +246,25 @@ impl Drop for Serving {
 impl Serving {
     /// Where the router is listening.
     #[must_use]
-    pub fn address(&self) -> SocketAddr {
+    pub(crate) fn address(&self) -> SocketAddr {
         self.address
     }
 
     /// Which entries hold a child, without asking any of them for anything.
     #[must_use]
-    pub fn loaded(&self) -> Vec<String> {
+    pub(crate) fn loaded(&self) -> Vec<String> {
         self.router.loaded()
     }
 
     /// How many requests are waiting in line for room.
     #[must_use]
-    pub fn waiting(&self) -> usize {
+    pub(crate) fn waiting(&self) -> usize {
         self.router.waiting()
     }
 
     /// Residents the startup loader could not load.
     #[must_use]
-    pub fn resident_failures(&self) -> Vec<String> {
+    pub(crate) fn resident_failures(&self) -> Vec<String> {
         self.router.resident_failures()
     }
 
@@ -285,7 +285,7 @@ impl Serving {
     ///
     /// If this router was not built by `reloadable`, which has no file to
     /// rewrite, or if the file cannot be written.
-    pub fn rewrite(&self, catalog: &str) {
+    pub(crate) fn rewrite(&self, catalog: &str) {
         let source = self
             .source
             .as_ref()
@@ -309,7 +309,7 @@ impl Serving {
 ///
 /// If the condition has not arrived by the deadline, reporting what was loaded
 /// and what failed so the failure names a state rather than only a timeout.
-pub fn settled(serving: &Serving, expected: &str, done: impl Fn(&Serving) -> bool) {
+pub(crate) fn settled(serving: &Serving, expected: &str, done: impl Fn(&Serving) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while Instant::now() < deadline {
         if done(serving) {
@@ -331,7 +331,7 @@ pub fn settled(serving: &Serving, expected: &str, done: impl Fn(&Serving) -> boo
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn serving(catalog: &str, root: ModelsRoot) -> Serving {
+pub(crate) fn serving(catalog: &str, root: ModelsRoot) -> Serving {
     budgeted(catalog, root, None)
 }
 
@@ -347,7 +347,7 @@ pub fn serving(catalog: &str, root: ModelsRoot) -> Serving {
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn budgeted(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>) -> Serving {
+pub(crate) fn budgeted(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>) -> Serving {
     windowed(catalog, root, limit_mib, Duration::ZERO)
 }
 
@@ -364,7 +364,7 @@ pub fn budgeted(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>) -> Serv
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn windowed(
+pub(crate) fn windowed(
     catalog: &str,
     root: ModelsRoot,
     limit_mib: Option<u32>,
@@ -391,7 +391,12 @@ pub fn windowed(
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn queued(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, wait: Duration) -> Serving {
+pub(crate) fn queued(
+    catalog: &str,
+    root: ModelsRoot,
+    limit_mib: Option<u32>,
+    wait: Duration,
+) -> Serving {
     launched(catalog, root, Budget::new(limit_mib), Duration::ZERO, wait)
 }
 
@@ -408,7 +413,12 @@ pub fn queued(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, wait: Dur
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn probed(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, probe: Probe) -> Serving {
+pub(crate) fn probed(
+    catalog: &str,
+    root: ModelsRoot,
+    limit_mib: Option<u32>,
+    probe: Probe,
+) -> Serving {
     launched(
         catalog,
         root,
@@ -433,7 +443,7 @@ pub fn probed(catalog: &str, root: ModelsRoot, limit_mib: Option<u32>, probe: Pr
 /// If the catalog cannot be written or is not usable, or the port cannot be
 /// bound, which is a broken test rather than a failing one.
 #[must_use]
-pub fn reloadable(catalog: &str, root: ModelsRoot) -> Serving {
+pub(crate) fn reloadable(catalog: &str, root: ModelsRoot) -> Serving {
     let source = root.path().join("catalog.toml");
     fs::write(&source, catalog).expect("a writable temporary directory");
     launched(
@@ -467,7 +477,7 @@ fn launched(
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn impatient(
+pub(crate) fn impatient(
     catalog: &str,
     root: ModelsRoot,
     limit_mib: Option<u32>,
@@ -484,7 +494,7 @@ pub fn impatient(
 /// If the catalog is not usable or the port cannot be bound, which is a broken
 /// test rather than a failing one.
 #[must_use]
-pub fn capped(catalog: &str, root: ModelsRoot, connections: usize) -> Serving {
+pub(crate) fn capped(catalog: &str, root: ModelsRoot, connections: usize) -> Serving {
     launched_with(
         catalog,
         root,
@@ -495,7 +505,7 @@ pub fn capped(catalog: &str, root: ModelsRoot, connections: usize) -> Serving {
 /// A router serving `catalog` under these rules for who may use it, with no
 /// budget, no idle window and no wait.
 #[must_use]
-pub fn guarded(catalog: &str, root: ModelsRoot, access: Access) -> Serving {
+pub(crate) fn guarded(catalog: &str, root: ModelsRoot, access: Access) -> Serving {
     launched_with(catalog, root, open_limits(None).with_access(access))
 }
 

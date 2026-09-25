@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 
 /// The repository root. One crate at the top level, so the manifest directory
 /// is the root, and the rules apply to every file below it.
-pub fn repo_root() -> PathBuf {
+pub(crate) fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 /// Every file in the repository, minus build output and tool state. Callers
 /// filter by extension: one walk serves the prose, link and size gates.
-pub fn sources() -> Vec<PathBuf> {
+pub(crate) fn sources() -> Vec<PathBuf> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
         // `reports` holds local evidence the .gitignore keeps out of the
         // repository; CI never sees it, so neither do the gates here.
@@ -47,7 +47,7 @@ pub fn sources() -> Vec<PathBuf> {
 }
 
 /// True when the path carries one of the given extensions.
-pub fn has_extension(path: &Path, extensions: &[&str]) -> bool {
+pub(crate) fn has_extension(path: &Path, extensions: &[&str]) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| extensions.contains(&e))

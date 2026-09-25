@@ -20,7 +20,7 @@ use std::time::{self, SystemTime};
 
 /// One metadata value, in the subset of GGUF types these tests write.
 #[derive(Debug, Clone)]
-pub enum Value {
+pub(crate) enum Value {
     U16(u16),
     U32(u32),
     U64(u64),
@@ -35,7 +35,7 @@ pub enum Value {
 
 /// A file being composed. Pairs are written in the order they were added.
 #[derive(Debug, Clone)]
-pub struct Gguf {
+pub(crate) struct Gguf {
     version: u32,
     pairs: Vec<(String, Value)>,
 }
@@ -43,7 +43,7 @@ pub struct Gguf {
 impl Gguf {
     /// An empty file of the current format version.
     #[must_use]
-    pub fn v3() -> Self {
+    pub(crate) fn v3() -> Self {
         Self {
             version: 3,
             pairs: Vec::new(),
@@ -52,7 +52,7 @@ impl Gguf {
 
     /// The previous version, which differs only in its number.
     #[must_use]
-    pub fn v2() -> Self {
+    pub(crate) fn v2() -> Self {
         Self {
             version: 2,
             pairs: Vec::new(),
@@ -62,7 +62,7 @@ impl Gguf {
     /// The pairs a model of one architecture carries, so a test that wants
     /// "a plausible model" does not spell out six keys each time.
     #[must_use]
-    pub fn model(architecture: &str, blocks: u32, context: u32, embedding: u32) -> Self {
+    pub(crate) fn model(architecture: &str, blocks: u32, context: u32, embedding: u32) -> Self {
         Self::v3()
             .with("general.architecture", Value::Text(architecture.to_owned()))
             .with(&format!("{architecture}.block_count"), Value::U32(blocks))
@@ -77,14 +77,14 @@ impl Gguf {
     }
 
     #[must_use]
-    pub fn with(mut self, key: &str, value: Value) -> Self {
+    pub(crate) fn with(mut self, key: &str, value: Value) -> Self {
         self.pairs.push((key.to_owned(), value));
         self
     }
 
     /// The bytes, laid out as the format specifies.
     #[must_use]
-    pub fn bytes(&self) -> Vec<u8> {
+    pub(crate) fn bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(b"GGUF");
         out.extend_from_slice(&self.version.to_le_bytes());
@@ -100,7 +100,7 @@ impl Gguf {
     /// Writes the file, then extends it sparsely to `size` bytes when that is
     /// larger than the header, so a test can name a file size in mebibytes
     /// without writing them.
-    pub fn write(&self, path: &Path, size: u64) {
+    pub(crate) fn write(&self, path: &Path, size: u64) {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("a writable temporary directory");
         }
@@ -173,13 +173,13 @@ fn push_value(out: &mut Vec<u8>, value: &Value) {
 /// The estate's path rule allows the temporary directory because it names a
 /// platform rather than a machine. Distinct from `support::ModelsRoot`, which
 /// creates empty placeholder files: these tests need files with bytes in them.
-pub struct Scratch {
+pub(crate) struct Scratch {
     root: PathBuf,
 }
 
 impl Scratch {
     #[must_use]
-    pub fn new(label: &str) -> Self {
+    pub(crate) fn new(label: &str) -> Self {
         let unique = format!(
             "model-router-{label}-{}-{:?}",
             SystemTime::now()
@@ -194,7 +194,7 @@ impl Scratch {
     }
 
     #[must_use]
-    pub fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.root
     }
 }

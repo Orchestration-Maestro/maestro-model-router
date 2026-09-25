@@ -24,13 +24,13 @@ use super::{ModelsRoot, stub_binary};
 
 /// A search path whose `llama-server` is the stub, so the binary under test
 /// finds a child the way it does in the field: by name, on `PATH`.
-pub struct SearchPath {
+pub(crate) struct SearchPath {
     directory: PathBuf,
 }
 
 impl SearchPath {
     /// A directory carrying the stub as `llama-server`.
-    pub fn with_stub() -> Self {
+    pub(crate) fn with_stub() -> Self {
         let directory = env::temp_dir().join(format!(
             "model-router-path-{}-{:?}",
             process::id(),
@@ -43,7 +43,7 @@ impl SearchPath {
     /// Also carries the stub as `llama-server-<runtime>`, the name a catalog
     /// entry's `runtime` resolves to.
     #[must_use]
-    pub fn carrying(self, runtime: &str) -> Self {
+    pub(crate) fn carrying(self, runtime: &str) -> Self {
         self.linking(&format!("llama-server-{runtime}"))
     }
 
@@ -58,7 +58,7 @@ impl SearchPath {
     }
 
     /// The current search path with this directory in front of it.
-    pub fn value(&self) -> OsString {
+    pub(crate) fn value(&self) -> OsString {
         let mut paths = vec![self.directory.clone()];
         if let Some(inherited) = env::var_os("PATH") {
             paths.extend(env::split_paths(&inherited));
@@ -75,20 +75,20 @@ impl Drop for SearchPath {
 
 /// The router binary, serving, and ended when the test leaves however it
 /// leaves.
-pub struct RouterProcess {
+pub(crate) struct RouterProcess {
     process: Child,
     stdout: BufReader<ChildStdout>,
 }
 
 impl RouterProcess {
     /// Starts `model-router serve` on an ephemeral port.
-    pub fn serve(catalog: &Path, root: &ModelsRoot, search: &SearchPath) -> Self {
+    pub(crate) fn serve(catalog: &Path, root: &ModelsRoot, search: &SearchPath) -> Self {
         Self::serve_with(catalog, root, search, &[])
     }
 
     /// Starts `model-router serve` on an ephemeral port, with these variables
     /// set in its environment as well.
-    pub fn serve_with(
+    pub(crate) fn serve_with(
         catalog: &Path,
         root: &ModelsRoot,
         search: &SearchPath,
@@ -117,7 +117,7 @@ impl RouterProcess {
     }
 
     /// The address the router says it is serving on, from its first line.
-    pub fn address(&mut self) -> SocketAddr {
+    pub(crate) fn address(&mut self) -> SocketAddr {
         let mut line = String::new();
         self.stdout
             .read_line(&mut line)
@@ -138,7 +138,7 @@ impl RouterProcess {
     ///
     /// Through the `kill` command, because `std`'s `Child::kill` sends
     /// `SIGKILL`, which no process can handle.
-    pub fn terminate(&self) {
+    pub(crate) fn terminate(&self) {
         let status = Command::new("kill")
             .args(["-TERM", &self.process.id().to_string()])
             .status()
@@ -147,7 +147,7 @@ impl RouterProcess {
     }
 
     /// The exit status, if the router ends before the deadline.
-    pub fn exited_within(&mut self, deadline: Duration) -> Option<ExitStatus> {
+    pub(crate) fn exited_within(&mut self, deadline: Duration) -> Option<ExitStatus> {
         let until = Instant::now() + deadline;
         while Instant::now() < until {
             if let Some(status) = self.process.try_wait().expect("the router's status") {
@@ -162,14 +162,14 @@ impl RouterProcess {
     ///
     /// Read only once the process has ended, so this cannot block on a pipe
     /// that is still open.
-    pub fn rest_of_stdout(&mut self) -> String {
+    pub(crate) fn rest_of_stdout(&mut self) -> String {
         let mut text = String::new();
         drop(self.stdout.read_to_string(&mut text));
         text
     }
 
     /// Whatever the router wrote to stderr, once it has ended.
-    pub fn stderr(&mut self) -> String {
+    pub(crate) fn stderr(&mut self) -> String {
         let mut text = String::new();
         if let Some(mut stderr) = self.process.stderr.take() {
             drop(stderr.read_to_string(&mut text));
