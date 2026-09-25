@@ -114,6 +114,7 @@ is worse than no gate, because the repository still looks guarded.
 the platform, for the maintainer too.
 
 ```text
+scripts/bootstrap.sh  # once per clone: the pinned toolbelt and the hooks
 git switch -c <topic>
 just check            # the same commands CI runs, not equivalents
 git push -u origin <topic>
