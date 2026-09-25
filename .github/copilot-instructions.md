@@ -177,6 +177,10 @@ in place.
 │   └── voice.rs                                                   # Where the router's own lines for its operator go
 ├── tests/                                                         # Integration tests
 │   └── it/                                                        # It
+│       ├── catalog_entries/                                       # The model catalog: the shape of an entry, and what an entry is estimated
+│       │   ├── entry_schema.rs                                    # Schema gate for the model catalog
+│       │   ├── memory_estimates.rs                                # What the catalog charges an entry, when it declares no estimate or one
+│       │   └── mod.rs                                             # The model catalog: the shape of an entry, and what an entry is estimated
 │       ├── common/                                                # Shared by the gates
 │       │   ├── mod.rs                                             # Shared by the gates
 │       │   └── repository.rs                                      # The repository's files, walked once for every gate that reads them
@@ -185,6 +189,12 @@ in place.
 │       │   ├── gguf.rs                                            # Synthetic GGUF files, written in the format's own layout
 │       │   ├── mod.rs                                             # Model files a test writes for itself
 │       │   └── scratch.rs                                         # A scratch directory for a test that writes model files with bytes in them
+│       ├── proxy_routing/                                         # Routing both endpoints, through the interface a caller holds
+│       │   ├── body_framing.rs                                    # How a request body arrives: the length it declares, the leave it asks
+│       │   ├── child_lifecycle.rs                                 # What a caller sees of the child behind its request: one that cannot
+│       │   ├── dedicated_endpoint.rs                              # The dedicated endpoint, /models/<id>/..., which names its model in the
+│       │   ├── generic_endpoint.rs                                # The generic endpoint, /v1/..., which names its model in the body, and
+│       │   └── mod.rs                                             # Routing both endpoints, through the interface a caller holds
 │       ├── support/                                               # Shared by the tests that drive real processes
 │       │   ├── http.rs                                            # Raw HTTP, written and read by hand
 │       │   ├── mod.rs                                             # Shared by the tests that drive real processes
@@ -196,7 +206,6 @@ in place.
 │       ├── api_replies.rs                                         # What the router says in its own voice, and how a client is meant to read
 │       ├── caller_access.rs                                       # Who may use the router
 │       ├── caller_hangup.rs                                       # A caller that hangs up releases the model it was waiting on
-│       ├── catalog_entries.rs                                     # Schema gate for the model catalog
 │       ├── catalog_reload.rs                                      # Re-reading the catalog without ending the process
 │       ├── child_supervision.rs                                   # Supervising one server child, through the interface a caller holds
 │       ├── cli_commands.rs                                        # The commands a person types, run the way the binary is run
@@ -217,7 +226,6 @@ in place.
 │       ├── module_size.rs                                         # Size limits
 │       ├── operator_control.rs                                    # Loading and unloading a model on an operator's say-so
 │       ├── prometheus_metrics.rs                                  # What the router is holding, in the text format Prometheus scrapes
-│       ├── proxy_routing.rs                                       # Routing both endpoints, through the interface a caller holds
 │       ├── request_queueing.rs                                    # Waiting for room rather than refusing it
 │       ├── resident_entries.rs                                    # Residency, driven through the router rather than through the policy
 │       ├── router_mode.rs                                         # The llama.cpp router-mode surface, which is what a llama.cpp client speaks
