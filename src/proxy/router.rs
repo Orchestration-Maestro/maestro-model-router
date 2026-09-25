@@ -178,3 +178,81 @@ impl Router {
         listen::accept(&self.listeners, &self.shared);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::time::Duration;
+
+    use super::*;
+    use crate::admission::Budget;
+    use crate::catalog::Catalog;
+    use crate::idle::IdleWindow;
+    use crate::queue::Wait;
+
+    /// A router bound on two ephemeral loopback ports, never served.
+    ///
+    /// Nothing here starts a process, so the server's binary only has to
+    /// exist, and this test binary does.
+    fn bound_twice() -> Router {
+        let catalog = Catalog::parse(
+            "version = 1\n\
+             \n\
+             [defaults]\n\
+             context_size = 4096\n\
+             memory_estimate_mib = 512\n\
+             \n\
+             [models.gemma3]\n\
+             path = \"unused\"\n",
+        )
+        .expect("a usable catalog");
+        let server = Server::located(Some(
+            &env::current_exe().expect("this test binary's own path"),
+        ))
+        .expect("this test binary's own path is a file");
+        let ephemeral: SocketAddr = "127.0.0.1:0".parse().expect("a loopback address");
+        Router::bind(
+            &[ephemeral, ephemeral],
+            Source {
+                catalog,
+                // Never read: nothing here reloads.
+                path: PathBuf::from("/tmp/unused-catalog.toml"),
+            },
+            PathBuf::from("/tmp"),
+            server,
+            Limits::new(
+                Budget::new(None),
+                IdleWindow::new(Duration::ZERO),
+                Wait::new(Duration::ZERO),
+            ),
+        )
+        .expect("two ephemeral loopback ports")
+    }
+
+    #[test]
+    fn every_address_is_reported_as_the_operating_system_assigned_it() {
+        let router = bound_twice();
+        let addresses = router.addresses();
+
+        assert_eq!(addresses.len(), 2, "one per listener: {addresses:?}");
+        assert_eq!(addresses[0], router.address(), "the first is `address`");
+        assert!(
+            addresses.iter().all(|address| address.port() != 0),
+            "each is the port assigned, not the zero asked for: {addresses:?}"
+        );
+    }
+
+    #[test]
+    fn a_router_is_debugged_by_the_addresses_it_answers_on() {
+        let router = bound_twice();
+        let addresses = router.addresses();
+
+        assert_eq!(
+            format!("{router:?}"),
+            format!(
+                "Router {{ addresses: [{}, {}], .. }}",
+                addresses[0], addresses[1]
+            )
+        );
+    }
+}

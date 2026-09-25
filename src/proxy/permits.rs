@@ -38,3 +38,29 @@ impl Permits {
         self.freed.notify_one();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, mpsc};
+    use std::thread;
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn a_free_turn_is_taken_at_once() {
+        // On a thread with a deadline, because a take that waited for a
+        // turn it already had would wait for ever.
+        let permits = Arc::new(Permits::new(2));
+        let taking = Arc::clone(&permits);
+        let (taken, told) = mpsc::channel();
+        thread::spawn(move || {
+            taking.take();
+            taking.take();
+            taken.send(()).ok();
+        });
+
+        told.recv_timeout(Duration::from_secs(5))
+            .expect("both free turns were taken without waiting");
+    }
+}
