@@ -217,18 +217,6 @@ const ACCEPTED: &[(&str, &str)] = &[
          no window.",
     ),
     (
-        "reserve <-> addresses",
-        "Both walk the router's listening surface and collect what each \
-         element yields, which is the whole of the shape the gate matched. \
-         They walk it in opposite directions and at different times: reserve \
-         turns the addresses a caller asked for into listeners, once, and can \
-         fail at any of them; addresses asks bound listeners where they ended \
-         up, any number of times, and cannot fail at all. Merging them would \
-         mean one walk taking what to do with each element as a parameter, \
-         which is what iter().map() already is -- the match is that call site \
-         written twice, not logic written twice.",
-    ),
-    (
         "allowed <-> suffix",
         "Two questions asked of the same three endpoint shapes, each answered \
          per shape with a match: which methods an endpoint accepts, and what \
@@ -243,13 +231,6 @@ const ACCEPTED: &[(&str, &str)] = &[
          the gate matched it against suffix once load and unload gave both \
          matches two more arms. Nothing is written twice; allows is one \
          call to allowed.",
-    ),
-    (
-        "let_go <-> touch",
-        "Both reach one slot by id and act on what it holds, which is the \
-         lock order every path in the slots module keeps. One empties the \
-         slot unless its child is busy; the other stamps it and never \
-         empties anything. The shared lines are that lookup.",
     ),
     (
         "load <-> unload",
@@ -281,6 +262,13 @@ const ACCEPTED: &[(&str, &str)] = &[
          mode -- and they are not one claim, because a server can gain \
          reranking without embeddings or the reverse, and the estimate would \
          then be wrong for exactly one of them with nothing to say so.",
+    ),
+    (
+        "say <-> complain",
+        "Each passes one line to one side of the router's voice: what it did, \
+         and a resident that would not load. Merging them would mean one \
+         method taking a parameter saying which stream, at every call site \
+         where the name says it once.",
     ),
 ];
 
