@@ -154,6 +154,26 @@ impl RouterProcess {
         })
     }
 
+    /// The router's stdout after the address line, up to and including the
+    /// first line that holds `marker`, or to the end if none does.
+    ///
+    /// `serve` prints its banner after the address line, so a test that
+    /// signals the router as soon as it has the address can end it before the
+    /// rest of the banner is written. Reading through the banner's last line
+    /// first leaves the signal nothing to cut short.
+    pub(crate) fn stdout_through(&mut self, marker: &str) -> String {
+        let mut text = String::new();
+        let mut line = String::new();
+        while self.stdout.read_line(&mut line).is_ok_and(|read| read > 0) {
+            text.push_str(&line);
+            if line.contains(marker) {
+                break;
+            }
+            line.clear();
+        }
+        text
+    }
+
     /// Whatever the router has written to stdout since the address line.
     ///
     /// Read only once the process has ended, so this cannot block on a pipe

@@ -209,11 +209,11 @@ mod with_the_stub {
             &[("PATH", path.to_str().expect("a search path in UTF-8"))],
         );
         let first = router.address();
+        let said = router.stdout_through(END_OF_BANNER);
         router.terminate();
         router
             .exited_within(Duration::from_secs(20))
             .unwrap_or_else(|| panic!("serving {first} outlived its signal:\n{}", router.stderr()));
-        let said = router.rest_of_stdout();
         assert!(
             said.contains("derived from the device (32607 MiB total"),
             "{said}"
@@ -301,17 +301,23 @@ mod with_the_stub {
         );
     }
 
+    /// The line `serve` ends its banner with, after the address, the budget
+    /// and the reservation; reading through it before signalling means the
+    /// signal cannot cut the banner short.
+    const END_OF_BANNER: &str = "a streamed reply is passed through as it arrives";
+
     /// Everything `serve` says on standard output, from the address on, once
     /// a signal has ended it.
     fn served(catalog: &str, root: &ModelsRoot) -> String {
         let search = SearchPath::with_stub();
         let mut router = RouterProcess::serve(Path::new(catalog), root, &search);
         let first = router.address();
+        let banner = router.stdout_through(END_OF_BANNER);
         router.terminate();
         router
             .exited_within(Duration::from_secs(20))
             .unwrap_or_else(|| panic!("serving {first} outlived its signal:\n{}", router.stderr()));
-        router.rest_of_stdout()
+        banner + &router.rest_of_stdout()
     }
 
     // Memory a resident holds is gone for good, so `serve` says how much at
