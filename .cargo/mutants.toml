@@ -11,4 +11,18 @@ exclude_re = [
   # The arm stays for any platform that reports the error again, where
   # taking it for a pause would spin.
   'src/proxy/relay\.rs:\d+:\d+: replace match guard .* with true in watch$',
+  # `Served::drop` in src/serving.rs tells the waiting thread that serving
+  # ended. `Router::serve` never returns, so the only way it drops is a panic
+  # on the serving thread, and no test can make the real router panic there.
+  # An empty drop leaves a router whose serving thread panicked waiting for a
+  # signal instead of exiting with the panic's status.
+  'src/serving\.rs:\d+:\d+: replace <impl Drop for Served>::drop with \(\)$',
+  # A second signal in src/serving.rs ends the process while the first
+  # signal's stop is still running. That stop sends SIGKILL to each child
+  # and then waits for it, and on Linux it returns at once for any child a
+  # test can start. So a second signal lands inside the stop only if it wins
+  # a race, and a test that depended on that race would be flaky. Without the
+  # guard, the second signal starts another stop instead of ending the
+  # process.
+  'src/serving\.rs:\d+:\d+: replace match guard signalled with false in wait_for_the_end$',
 ]
