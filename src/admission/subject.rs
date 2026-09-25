@@ -23,6 +23,7 @@ use crate::memory::Measurement;
 const LAYERS_ON_DEVICE: [&str; 3] = ["n-gpu-layers", "ngl", "gpu-layers"];
 
 /// One model the router has loaded, as admission needs to see it.
+#[derive(Debug)]
 pub struct Loaded {
     /// Which entry it is.
     pub id: String,

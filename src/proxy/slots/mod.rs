@@ -36,6 +36,7 @@ pub(in crate::proxy) use start::say;
 use lease::Freed;
 
 /// Every entry's slot, and the budget they compete for.
+#[derive(Debug)]
 pub(super) struct Slots {
     /// One slot per catalog entry, which [`Slots::resync`] adds to.
     ///

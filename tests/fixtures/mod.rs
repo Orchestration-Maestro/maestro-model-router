@@ -10,7 +10,7 @@
 //! Shared by every test target that needs a model file with something inside
 //! it. Each target compiles the whole module and uses a subset, for the same
 //! reason `support` does: Rust has no partially used module.
-#![allow(dead_code)]
+#![allow(dead_code, reason = "each test target uses a subset of this module")]
 
 use std::env;
 use std::fs;

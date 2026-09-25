@@ -26,6 +26,7 @@ use crate::launch::{Failure, Server};
 /// without the other once a catalog can be re-read: a parsed catalog with no
 /// source cannot be read again, and a path nothing has parsed has not been
 /// shown to be a catalog at all.
+#[derive(Debug)]
 pub struct Source {
     /// The catalog as it was parsed.
     pub catalog: Catalog,
@@ -34,6 +35,7 @@ pub struct Source {
 }
 
 /// What every connection thread shares.
+#[derive(Debug)]
 pub(super) struct Shared {
     /// The catalog being served, which `reload` replaces.
     ///

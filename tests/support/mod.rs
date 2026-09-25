@@ -11,7 +11,7 @@
 //! module, so the alternative to the allowance below is one support file per
 //! target with the shared parts copied between them -- which the duplication
 //! gate would rightly refuse.
-#![allow(dead_code)]
+#![allow(dead_code, reason = "each test target uses a subset of this module")]
 
 use maestro_model_router::admission::Budget;
 use maestro_model_router::catalog::Catalog;

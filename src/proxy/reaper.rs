@@ -32,6 +32,7 @@ const MIN_INTERVAL: Duration = Duration::from_millis(100);
 /// interrupted and a `Weak` alone is never dropped in the harness that runs
 /// every test in this repository -- `serve` never returns, so nothing ever
 /// drops the `Arc<Shared>` the reaper is watching.
+#[derive(Debug)]
 pub(super) struct Stop {
     flag: Mutex<bool>,
     condvar: Condvar,

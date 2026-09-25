@@ -18,6 +18,7 @@ use crate::memory::Measurement;
 /// reference has been handed out -- so saying that in the type lets the rule
 /// below be driven from a unit test rather than from a spawned server, a port
 /// and a race.
+#[derive(Debug)]
 pub(super) struct Loaded<C = Child> {
     pub(super) child: Arc<C>,
     /// When it last answered, so the coldest is unloaded first.

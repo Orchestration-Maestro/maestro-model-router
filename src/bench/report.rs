@@ -57,7 +57,7 @@ pub fn command(path: &Path, only: Option<&str>) -> Result<(), String> {
         // Printed before the load, because a large model is minutes and a
         // silent terminal looks like a hang.
         print!("{:<20} {:>9} ", entry.id, entry.memory_estimate_mib);
-        let _ = io::stdout().flush();
+        drop(io::stdout().flush());
 
         match super::entry(&server, entry, &root) {
             Ok(reading) => {

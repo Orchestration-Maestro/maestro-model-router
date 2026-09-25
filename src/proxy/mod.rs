@@ -87,6 +87,7 @@ pub use shared::Source;
 use slots::Slots;
 
 /// The public listeners, and everything a request needs to be answered.
+#[derive(Debug)]
 pub struct Router {
     listeners: Vec<TcpListener>,
     shared: Arc<Shared>,

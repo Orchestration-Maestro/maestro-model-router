@@ -18,6 +18,7 @@ use crate::launch::Child;
 /// variable: a relay lets its child go at the end of every request, and one
 /// that had to take the admission lock to say so would wait out whichever
 /// load held it -- with its caller's connection still open behind it.
+#[derive(Debug)]
 pub(super) struct Freed {
     rung: Mutex<u64>,
     bell: Condvar,

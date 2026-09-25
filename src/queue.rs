@@ -37,6 +37,7 @@ const DEFAULT: Duration = Duration::from_secs(60);
 /// before the wait existed. Given a meaning on purpose rather than treated as
 /// unset: an operator writing `0` into a variable is saying "do not wait", and
 /// reading that as "wait the default" would be the opposite of what they said.
+#[derive(Debug)]
 pub struct Wait(Duration);
 
 impl Wait {

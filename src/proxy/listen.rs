@@ -166,6 +166,7 @@ fn on(listener: &TcpListener, shared: &Arc<Shared>) {
 }
 
 /// How many connections may be answered at once, shared by every listener.
+#[derive(Debug)]
 pub(super) struct Permits {
     free: Mutex<usize>,
     freed: Condvar,
