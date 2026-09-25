@@ -127,6 +127,26 @@ fn check_says_when_the_catalog_cannot_be_read() {
     );
 }
 
+// The argument table decides by the command and the number of operands
+// together, so a known command with the wrong number of them is not that
+// command: it is the usage. The catalog named is one that cannot be read, so a
+// table that took these for a command would say so instead.
+#[test]
+fn a_known_command_with_the_wrong_number_of_operands_is_answered_with_the_usage() {
+    for args in [
+        ["launch", "/somewhere/catalog.toml"].as_slice(),
+        &["check", "/somewhere/catalog.toml", "gemma3"],
+    ] {
+        let output = model_router(args, Path::new(NOWHERE));
+        assert!(!output.status.success(), "{args:?} fails");
+        assert!(
+            text(&output.stderr).contains("usage: model-router check <catalog>"),
+            "{args:?} is answered with the usage:\n{}",
+            text(&output.stderr)
+        );
+    }
+}
+
 #[cfg(unix)]
 mod with_the_stub {
     use super::*;
@@ -156,12 +176,19 @@ mod with_the_stub {
     /// Runs `model-router` with the stub found on the search path as
     /// `llama-server`, the way a real server is found in the field.
     fn with_stub(args: &[&str], root: &ModelsRoot) -> Output {
+        with_stub_and(args, root, &[])
+    }
+
+    /// Runs `model-router` as [`with_stub`] does, with these variables set in
+    /// its environment as well.
+    fn with_stub_and(args: &[&str], root: &ModelsRoot, variables: &[(&str, &str)]) -> Output {
         let search = SearchPath::with_stub();
         Command::new(env!("CARGO_BIN_EXE_model-router"))
             .args(args)
             .env("PATH", search.value())
             .env("MAESTRO_MODELS_ROOT", root.path())
             .env_remove("MAESTRO_MEMORY_BUDGET_MIB")
+            .envs(variables.iter().copied())
             .output()
             .expect("the router binary is built by cargo test")
     }
@@ -207,6 +234,51 @@ mod with_the_stub {
         );
     }
 
+    // Without an address `serve` binds the default port, which no test can
+    // count on being free. A setting only `serve` reads, set to nonsense,
+    // ends it before the bind, and says it was `serve` that read it: `check`
+    // and `bench` would have succeeded here, and the usage names no setting.
+    #[test]
+    fn serve_without_an_address_reads_its_settings_before_it_binds() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+
+        let output = with_stub_and(
+            &["serve", &catalog],
+            &root,
+            &[("MAESTRO_IDLE_UNLOAD_SECONDS", "soon")],
+        );
+        assert!(!output.status.success(), "a nonsense setting fails");
+        assert!(
+            text(&output.stderr).contains("MAESTRO_IDLE_UNLOAD_SECONDS carries 'soon'"),
+            "{}",
+            text(&output.stderr)
+        );
+    }
+
+    // What a child writes reaches the router's own standard error under the
+    // entry it came from, so a service manager's journal keeps it. Only that
+    // passing on writes the entry before the child's line: a failure quotes
+    // the child's last words indented, under the failure.
+    #[test]
+    fn a_childs_lines_reach_standard_error_under_its_entry() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(
+            &root,
+            &catalog_text(
+                "\n[models.gemma3.flags]\nready-after = \"600000\"\nexit-after = \"250\"\n",
+            ),
+        );
+
+        let output = with_stub(&["launch", &catalog, "gemma3"], &root);
+        assert!(!output.status.success(), "a child that exits never answers");
+        assert!(
+            text(&output.stderr).contains("gemma3: stub-llama-server: exiting"),
+            "{}",
+            text(&output.stderr)
+        );
+    }
+
     #[test]
     fn launch_starts_an_entry_proves_it_answers_and_stops_it() {
         let root = ModelsRoot::with(&[MODEL]);
@@ -241,6 +313,20 @@ mod with_the_stub {
         assert!(
             row.contains("512") && row.contains('s'),
             "the row carries the declared estimate and a load time: {row}"
+        );
+    }
+
+    #[test]
+    fn bench_without_a_model_measures_every_entry() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+
+        let output = with_stub(&["bench", &catalog], &root);
+        assert!(output.status.success(), "{}", text(&output.stderr));
+        let said = text(&output.stdout);
+        assert!(
+            said.lines().any(|line| line.starts_with("gemma3")),
+            "a row for the catalog's one entry:\n{said}"
         );
     }
 }
