@@ -16,10 +16,11 @@ use std::collections::BTreeMap;
 use std::env::temp_dir;
 use std::fs::remove_file;
 use std::process;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use maestro_model_router::catalog::{Entry, RelativePath, Residency};
-use maestro_model_router::launch::{Failure, Liveness, Server};
+use maestro_model_router::launch::{Failure, LineSink, Liveness, Server};
 use maestro_model_router::memory::Probe;
 
 use crate::support::poll::eventually;
@@ -205,6 +206,36 @@ fn a_child_that_loses_the_port_race_once_still_starts_on_the_retry() {
     );
     child.stop();
     drop(remove_file(&marker));
+}
+
+/// Only a lost race is retried. A child that answered before it died failed
+/// on its own account, and a second start would only fail the same way,
+/// later: it is started once, so it says its last words once.
+#[test]
+fn a_child_that_answered_before_it_died_is_not_started_again() {
+    let root = ModelsRoot::with(&[MODEL]);
+    let mut entry = entry("crasher");
+    entry
+        .flags
+        .insert("ready-after".to_owned(), "600000".to_owned());
+    // Long enough for several probes to reach it while it serves.
+    entry
+        .flags
+        .insert("exit-after".to_owned(), "1000".to_owned());
+    let (heard, hearing) = mpsc::channel();
+    let server = server().with_sink(LineSink::new(move |_, line| {
+        drop(heard.send(line.to_owned()));
+    }));
+
+    server
+        .start(&entry, root.path())
+        .expect_err("a child that dies never becomes ready");
+
+    let exits = hearing
+        .try_iter()
+        .filter(|line| line.contains("exiting with code"))
+        .count();
+    assert_eq!(exits, 1, "started {exits} times");
 }
 
 /// The retry is bounded at one: a child that loses the race on both its

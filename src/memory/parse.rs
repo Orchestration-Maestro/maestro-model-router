@@ -180,4 +180,10 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn a_resident_set_in_another_unit_is_not_read_as_kibibytes() {
+        let text = "\"stub-llama-server.exe\",\"1234\",\"Console\",\"1\",\"12,345 MB\"\r\n";
+        assert_eq!(tasklist_rss(text), None);
+    }
 }

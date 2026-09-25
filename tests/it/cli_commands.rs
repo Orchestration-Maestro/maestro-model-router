@@ -173,9 +173,52 @@ fn a_known_command_with_the_wrong_number_of_operands_is_answered_with_the_usage(
 
 #[cfg(unix)]
 mod with_the_stub {
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
+    use std::{env, iter};
+
     use super::*;
     use crate::support::spawned::{RouterProcess, SearchPath};
     use crate::support::{get, request, status};
+
+    // With no budget set, `serve` sets one from the device, asking the device
+    // tool it finds on the search path. The one here answers the device query
+    // as a card of 32607 MiB would, and every other query with nothing.
+    #[test]
+    fn serve_derives_its_budget_from_the_device_tool_on_the_search_path() {
+        let root = ModelsRoot::with(&[MODEL]);
+        let catalog = written(&root, &catalog_text(""));
+        let tools = root.path().join("tools");
+        let tool = tools.join("nvidia-smi");
+        fs::create_dir_all(&tools).expect("a directory for the device tool");
+        fs::write(
+            &tool,
+            "#!/bin/sh\ncase \"$1\" in --query-gpu=*) echo '32607, 7903' ;; esac\n",
+        )
+        .expect("the device tool, written");
+        fs::set_permissions(&tool, Permissions::from_mode(0o755))
+            .expect("the device tool, executable");
+        let search = SearchPath::with_stub();
+        let path = env::join_paths(iter::once(tools).chain(env::split_paths(&search.value())))
+            .expect("a search path with no separator in it");
+
+        let mut router = RouterProcess::serve_with(
+            Path::new(&catalog),
+            &root,
+            &search,
+            &[("PATH", path.to_str().expect("a search path in UTF-8"))],
+        );
+        let first = router.address();
+        router.terminate();
+        router
+            .exited_within(Duration::from_secs(20))
+            .unwrap_or_else(|| panic!("serving {first} outlived its signal:\n{}", router.stderr()));
+        let said = router.rest_of_stdout();
+        assert!(
+            said.contains("derived from the device (32607 MiB total"),
+            "{said}"
+        );
+    }
 
     #[test]
     fn serve_requires_the_key_its_environment_sets() {
