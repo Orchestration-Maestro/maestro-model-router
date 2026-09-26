@@ -117,7 +117,7 @@ the platform, for the maintainer too. Install rustup and `rust-gate` first, as
 ```text
 rust-gate setup       # once per clone: the pinned toolbelt and the hooks
 git switch -c <topic>
-just check            # the same commands CI runs, not equivalents
+just check            # exactly what CI runs; the pre-push hook runs it too
 git push -u origin <topic>
 gh pr create --fill
 gh pr merge --squash --delete-branch
@@ -125,8 +125,8 @@ gh pr merge --squash --delete-branch
 
 ## What the gates will tell you
 
-Locally, hooks run formatting and lint at commit time and the rest before a
-push. In CI, `rust / Required Rust CI` from `rust-workflows` blocks the merge:
+Locally, hooks run formatting and lint at commit time and, before a push,
+`just check`: CI's checks job itself, `rust-gate ci --local`. In CI, `rust / Required Rust CI` from `rust-workflows` blocks the merge:
 formatting, Clippy, tests on three platforms, strict rustdoc, 90% line
 coverage, advisories, a secret scan, the declared Rust version, a
 reproducible release build and mutation testing of the change. The full

@@ -56,50 +56,23 @@ install:
     rustup toolchain install --profile minimal 1.98.1
     rustup component add clippy rustfmt llvm-tools-preview
 
-# The quality commands rust-workflows' CI runs, with its flags: rustfmt and
-# Clippy with the organization's settings, the gate handing Clippy its
-# thresholds and the lint block denying the scaffolding and `unsafe`, strict
-# rustdoc, the 90% coverage floor; then the workflows, the formatting of every
-# other file, the spelling, a secret scan of every file a commit could take,
-# and the commit hooks. CI also runs what needs its own runners or the network:
-# the other platforms, the release build, the SBOMs and mutation testing.
+# One check, the one CI runs: `rust-gate ci --local` runs the checks job of
+# rust-workflows' CI step by step, in its order and in a runner's environment,
+# over the commits a push sends, so CI confirms what a push already passed
+# rather than discovering it. A step only GitHub can run, the other platforms
+# and the uploads among them, says it is not applied locally and why. The
+# pre-push hook runs the same command.
 #
-# A missing tool stops it before anything runs, because a gate that skips when
-# its tool is absent reports green while looking at nothing. Once rust-workflows
-# ships `rust-gate ci --local`, that one command replaces this recipe's body;
-# until then CI's dependency-policy step alone checks licences, bans and
-# sources, against the organization's policy the gate renders at run time.
+# The gate itself comes from `cargo install`, at rust-workflows' latest release;
+# every tool it runs comes from the toolbelt `rust-gate setup` installs.
 
-# Run the quality gates CI runs.
+# Run the checks CI runs.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    for tool in mise just actionlint zizmor yamlfmt taplo shellcheck prek cargo rustup \
-      gitleaks typos jaq cargo-llvm-cov cargo-machete similarity-rs rust-gate; do
-      command -v "$tool" >/dev/null ||
-        { echo "Missing $tool; run rust-gate setup" >&2; exit 1; }
-    done
-    just --unstable --fmt --check
-    cargo fmt --all --check -- --config style_edition=2024
-    rust-gate clippy --local
-    cargo test --workspace --all-targets --locked
-    cargo test --workspace --doc --locked
-    RUSTDOCFLAGS='-D warnings -D missing_docs' cargo doc --workspace --no-deps --locked
-    cargo llvm-cov --workspace --locked --fail-under-lines 90 --summary-only
-    cargo machete
-    actionlint
-    zizmor --offline --persona=pedantic --no-progress .github/
-    yamlfmt -no_global_conf -lint
-    taplo fmt --check
-    typos
-    # Secrets in every file a commit could take, target/ aside.
-    tree=$(mktemp -d)
-    trap 'rm -rf "$tree"' EXIT
-    while IFS= read -r -d '' file; do
-      if [[ -f "$file" ]]; then cp --parents -- "$file" "$tree/"; fi
-    done < <(git ls-files -z --cached --others --exclude-standard)
-    gitleaks dir --no-banner --redact "$tree"
-    prek run --all-files
+    command -v rust-gate >/dev/null ||
+      { echo "Missing rust-gate; install it, then run rust-gate setup" >&2; exit 1; }
+    rust-gate ci --local
 
 # Format in place. `check` only verifies.
 fmt:

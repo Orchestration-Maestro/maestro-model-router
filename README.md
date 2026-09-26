@@ -613,9 +613,9 @@ that point closes the connection rather than pretending it can still answer.
 
 ```sh
 cargo install --locked --git https://github.com/Orchestration-Maestro/rust-workflows \
-  --tag v4.0.0 rust-gate
+  --tag vX.Y.Z rust-gate   # the latest release's tag
 rust-gate setup   # once per clone: the pinned toolbelt and the hooks
-just check        # the quality commands rust-workflows runs in CI, run here
+just check        # exactly what CI runs, run here; the pre-push hook runs it
 just serving      # what the router is holding, before interrupting it
 just deploy       # build HEAD, install it, restart once nothing is in flight
 ```
@@ -625,7 +625,13 @@ rustup. Every tool a gate runs is pinned by rust-workflows, which checks the
 checksum of each download, so the gates run the same releases here as in CI:
 `rust-gate setup` installs them into one per-user directory the justfile puts
 on its PATH
-([details](https://github.com/Orchestration-Maestro/rust-workflows/blob/v4.0.0/docs/ci.md#the-tools-on-your-machine)).
+([details](https://github.com/Orchestration-Maestro/rust-workflows/blob/main/docs/ci.md#the-tools-on-your-machine)).
+Install the gate from the
+[latest rust-workflows release](https://github.com/Orchestration-Maestro/rust-workflows/releases/latest).
+`just check` is `rust-gate ci --local`: the steps of CI's checks job, in its
+order and environment, over the commits a push sends, so CI confirms what a
+push already passed
+([details](https://github.com/Orchestration-Maestro/rust-workflows/blob/main/docs/ci.md#run-ci-before-you-push)).
 
 ## 📚 Documentation
 
