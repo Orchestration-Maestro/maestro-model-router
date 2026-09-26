@@ -30,6 +30,12 @@ repos:
         language: system
         entry: gitleaks git --pre-commit --staged --redact --no-banner
         pass_filenames: false
+      - id: just-format
+        name: Just formatting
+        language: system
+        entry: just --unstable --fmt --check
+        files: '(?i)^\.?justfile$'
+        pass_filenames: false
       - id: yamlfmt
         name: YAML formatting
         language: system
@@ -100,7 +106,7 @@ repos:
         stages: [pre-push]
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.1.0:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.2.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-architecture
@@ -109,7 +115,7 @@ repos:
         files: '(\.rs|Cargo\.toml|Cargo\.lock|maestro-quality\.toml|clippy\.toml)$'
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.1.0:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.2.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-hygiene
@@ -118,7 +124,7 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.1.0:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.2.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-rules
@@ -127,7 +133,7 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.1.0:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.2.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
       - id: rust-gate-guide
@@ -136,6 +142,6 @@ repos:
         always_run: true
         language: rust
         additional_dependencies:
-          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.1.0:rust-gate"
+          - "cli:https://github.com/Orchestration-Maestro/rust-workflows:v4.2.0:rust-gate"
           - "cli:jaq:3.1.1"
         pass_filenames: false
