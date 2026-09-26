@@ -181,7 +181,8 @@ in place.
 │       ├── catalog_entries/                                       # The model catalog: the shape of an entry, and what an entry is estimated
 │       │   ├── entry_schema.rs                                    # Schema gate for the model catalog
 │       │   ├── memory_estimates.rs                                # What the catalog charges an entry, when it declares no estimate or one
-│       │   └── mod.rs                                             # The model catalog: the shape of an entry, and what an entry is estimated
+│       │   ├── mod.rs                                             # The model catalog: the shape of an entry, and what an entry is estimated
+│       │   └── window_estimates.rs                                # What a model whose layers attend only to a window is charged for its
 │       ├── common/                                                # Shared by the gates
 │       │   ├── mod.rs                                             # Shared by the gates
 │       │   └── repository.rs                                      # The repository's files, walked once for every gate that reads them

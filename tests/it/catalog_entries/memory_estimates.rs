@@ -29,8 +29,8 @@ fn layered(full_attention_interval: Option<u32>) -> Gguf {
     }
 }
 
-/// What one layered model's entry is estimated at.
-fn estimated(label: &str, model: &Gguf) -> u32 {
+/// What one model's entry is estimated at, beside 64 MiB of weights.
+pub(super) fn estimated(label: &str, model: &Gguf) -> u32 {
     let scratch = Scratch::new(label);
     model.write(&scratch.path().join("a/model.gguf"), 64 * MIB);
     Catalog::read(&one_entry(""), scratch.path())
@@ -61,89 +61,14 @@ fn a_hybrid_model_caches_only_its_full_attention_layers() {
     );
 }
 
-/// A model of thirty layers, optionally declaring that most of them attend
-/// only to a window rather than to the whole context.
-///
-/// The pattern marks a layer 1 when it slides and 0 when it attends fully,
-/// five sliding to every one full, which is the shape Gemma ships.
-fn windowed(sliding: bool) -> Gguf {
-    let model = Gguf::model("gemma4", 30, 8192, 256)
-        .with("gemma4.attention.head_count", Value::U32(4))
-        .with("gemma4.attention.head_count_kv", Value::U32s(vec![2; 30]))
-        .with("gemma4.attention.key_length", Value::U32(128))
-        .with("gemma4.attention.value_length", Value::U32(128));
-    if !sliding {
-        return model;
-    }
-    let pattern: Vec<u32> = (0..30)
-        .map(|layer| u32::from((layer + 1) % 6 != 0))
-        .collect();
-    model
-        .with("gemma4.attention.sliding_window", Value::U32(64))
-        .with("gemma4.attention.key_length_swa", Value::U32(64))
-        .with("gemma4.attention.value_length_swa", Value::U32(64))
-        .with(
-            "gemma4.attention.sliding_window_pattern",
-            Value::U32s(pattern),
-        )
-}
-
 #[test]
-fn a_sliding_window_layer_caches_its_window_not_the_whole_context() {
-    // Twenty-five of the thirty layers attend to sixty-four tokens, at half
-    // the key width, and five attend to the whole 1024-token context. Charging
-    // every layer the full context at the full width is 30 MiB where the
-    // server allocates closer to 6.
-    //
-    // Measured on this estate: Gemma 4 26B derives 32,040 MiB against 16,764
-    // MiB it was found to hold, and the whole of that gap is this.
-    let dense = estimated("catalog-unwindowed", &windowed(false));
-    let sliding = estimated("catalog-windowed", &windowed(true));
-
-    assert!(
-        dense - sliding >= 23,
-        "a windowed model must cost far less than the same model attending \
-         fully on every layer: dense {dense} MiB, sliding {sliding} MiB"
-    );
-}
-
-/// A model of twenty-six layers that says it slides, without saying which
-/// layers do.
-///
-/// This is the shape Gemma 3 ships: `attention.sliding_window` and nothing
-/// beside it. Which layers take the window is fixed at one full-attention
-/// layer in every six, and that lives in llama.cpp's loader rather than in the
-/// file, so a reader waiting for an array it will never see charges every
-/// layer the whole context.
-fn unpatterned(sliding: bool) -> Gguf {
-    let model = Gguf::model("gemma3", 26, 8192, 256)
-        .with("gemma3.attention.head_count", Value::U32(4))
-        .with("gemma3.attention.head_count_kv", Value::U32(1))
-        .with("gemma3.attention.key_length", Value::U32(256))
-        .with("gemma3.attention.value_length", Value::U32(256));
-    if sliding {
-        model.with("gemma3.attention.sliding_window", Value::U32(64))
-    } else {
-        model
-    }
-}
-
-#[test]
-fn a_window_an_architecture_does_not_spell_out_is_still_a_window() {
-    // Twenty-two of these twenty-six layers see sixty-four tokens and four see
-    // the whole 1024-token context, but the file says only that a window
-    // exists. Reading it as dense charges 26 MiB where the server allocates
-    // closer to 5.
-    //
-    // Measured on this estate: Gemma 3 1B derives 2664 MiB against the 2048 it
-    // declares, and the whole of that 616 MiB gap is this.
-    let dense = estimated("catalog-unpatterned-dense", &unpatterned(false));
-    let sliding = estimated("catalog-unpatterned", &unpatterned(true));
-
-    assert!(
-        dense - sliding >= 18,
-        "a model that declares a window without a pattern must still be \
-         costed at its window: dense {dense} MiB, sliding {sliding} MiB"
+fn an_interval_of_zero_is_read_as_every_layer_caching() {
+    // Zero cannot mean "one layer in every zero". Read as a divisor it would
+    // end the process; read as the value a file that means nothing by it
+    // writes, it leaves every layer keeping a cache, the dense reading.
+    assert_eq!(
+        estimated("catalog-interval-zero", &layered(Some(0))),
+        estimated("catalog-interval-none", &layered(None)),
     );
 }
 

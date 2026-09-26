@@ -277,6 +277,22 @@ mod tests {
     }
 
     #[test]
+    fn only_a_transfer_encoding_naming_chunked_announces_chunked_framing() {
+        let head = parse(&lines(&[
+            "POST /models/gemma3/v1/chat/completions HTTP/1.1",
+            "Transfer-Encoding: gzip",
+            "X-Framing: chunked",
+        ]))
+        .expect("a well-formed head");
+
+        assert!(
+            !head.chunked,
+            "an encoding that is not chunked, and the word in a header that \
+             frames nothing, are bodies this router can still read"
+        );
+    }
+
+    #[test]
     fn an_expectation_is_read_here_and_does_not_travel_on() {
         let head = parse(&lines(&[
             "POST /models/gemma3/v1/chat/completions HTTP/1.1",
@@ -297,6 +313,22 @@ mod tests {
         assert!(
             !head_of("/models/gemma3/v1/echo").expects_continue,
             "and absent when nothing was asked"
+        );
+    }
+
+    #[test]
+    fn only_an_expect_header_asking_to_continue_holds_the_body_back() {
+        let head = parse(&lines(&[
+            "POST /models/gemma3/v1/chat/completions HTTP/1.1",
+            "Expect: something-else",
+            "X-Asked: 100-continue",
+        ]))
+        .expect("a well-formed head");
+
+        assert!(
+            !head.expects_continue,
+            "another expectation, and the value under another name, ask for \
+             no interim line"
         );
     }
 

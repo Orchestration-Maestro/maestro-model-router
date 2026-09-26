@@ -307,6 +307,35 @@ mod tests {
     }
 
     #[test]
+    fn a_forwarded_body_ends_where_it_was_declared_to_while_the_caller_waits() {
+        // The caller sent its whole body and is waiting for the answer, so
+        // nothing more is coming and the connection stays open. A copy that
+        // asked for one read more than was declared would wait on that caller
+        // for as long as it waits on the router: for ever.
+        let head = super::super::head::parse(&[
+            "POST /models/gemma3/v1/completions HTTP/1.1".to_owned(),
+            "Content-Length: 5".to_owned(),
+        ])
+        .expect("a well-formed head");
+        let (mut caller, downstream) = connection();
+        caller.write_all(b"hello").expect("the body, written");
+        let (mut upstream, _child) = connection();
+        let (done, finished) = mpsc::channel();
+        thread::spawn(move || {
+            let forwarded = forward_body(&head, &mut BufReader::new(&downstream), &mut upstream);
+            done.send(forwarded.is_ok()).ok();
+        });
+
+        let forwarded = finished.recv_timeout(Duration::from_secs(5));
+        drop(caller);
+        assert_eq!(
+            forwarded.ok(),
+            Some(true),
+            "the body was forwarded without waiting for more than it declared"
+        );
+    }
+
+    #[test]
     fn neither_side_of_a_relay_holds_a_small_write_back() {
         // A streamed answer is one small write per event, and a request is a
         // head and then a body. A socket that held each small write until the

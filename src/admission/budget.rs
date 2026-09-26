@@ -255,4 +255,17 @@ mod tests {
             "what an unset variable meant before the machine could be asked"
         );
     }
+
+    #[test]
+    fn memory_that_leaves_nothing_once_its_share_is_taken_sets_no_budget() {
+        // A device no larger than the margin it keeps back, and system memory
+        // too small for four fifths of it to be a whole mebibyte. A budget of
+        // zero would refuse every model; none is what the machine can say.
+        for probe in [
+            machine(Some(device(MIN_DEVICE_MARGIN_MIB)), None),
+            machine(None, Some(1)),
+        ] {
+            assert_eq!(Budget::derived(probe).limit_mib(), None);
+        }
+    }
 }

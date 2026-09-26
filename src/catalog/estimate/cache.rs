@@ -155,6 +155,8 @@ mod tests {
     fn a_cache_type_the_flags_do_not_name_is_read_as_f16() {
         let mut flags = BTreeMap::new();
         assert_eq!(sixteenths(&flags, ["ctk", "cache-type-k"]), F16);
+        flags.insert("cache-type-k".to_owned(), "f32".to_owned());
+        assert_eq!(sixteenths(&flags, ["ctk", "cache-type-k"]), F32);
         flags.insert("cache-type-k".to_owned(), "q4_0".to_owned());
         assert_eq!(
             sixteenths(&flags, ["ctk", "cache-type-k"]),

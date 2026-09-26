@@ -289,6 +289,11 @@ mod tests {
              sweep -- and off means no eviction however long anything has \
              sat idle"
         );
+        assert_eq!(
+            window.duration(),
+            None,
+            "and says so to the router, which then starts no reaper at all"
+        );
     }
 
     #[test]

@@ -324,6 +324,36 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_that_fits_exactly_beside_the_residents_is_not_told_it_never_will() {
+        // 10_000 less the 1_000 the resident keeps leaves exactly the 9_000
+        // wanted, so the room frees itself once the busy entry is done. The
+        // ceiling is inclusive, and a caller told "never" here would edit a
+        // catalog that was right.
+        let budget = Budget::new(Some(10_000));
+        let held = [
+            loaded("steward", 1_000, Residency::Resident, false, 100),
+            loaded("reading", 6_000, Residency::OnDemand, true, 50),
+        ];
+
+        let Decision::Blocked(message) = budget.admit(&held, &wanted("exact", 9_000), None) else {
+            panic!("the room is held by something that will release it");
+        };
+        assert!(
+            !message.contains("never"),
+            "the refusal names the moment, not the catalog: {message}"
+        );
+    }
+
+    #[test]
+    fn an_entry_of_exactly_the_whole_budget_fits_when_nothing_else_is_loaded() {
+        assert_eq!(
+            Budget::new(Some(4_000)).admit(&[], &wanted("whole", 4_000), None),
+            Decision::Fits,
+            "the ceiling is inclusive: holding exactly the budget is within it"
+        );
+    }
+
+    #[test]
     fn an_entry_already_loaded_fits_even_when_the_budget_is_exhausted() {
         let budget = Budget::new(Some(10_000));
         let held = [loaded("wanted", 9_999, Residency::OnDemand, true, 1)];

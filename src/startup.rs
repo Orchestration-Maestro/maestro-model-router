@@ -153,4 +153,19 @@ mod tests {
              only that nothing is evicted leaves the reader nowhere to go"
         );
     }
+
+    #[test]
+    fn the_admission_line_says_whether_a_request_waits_for_room() {
+        let lines = [admission_wait(true), admission_wait(false)];
+
+        assert_eq!(
+            lines.each_ref().map(|line| line.contains("waits for it")),
+            [true, false],
+            "a router that waits says so, and one that refuses does not: {lines:?}"
+        );
+        assert!(
+            lines[1].contains("MAESTRO_ADMISSION_WAIT_SECONDS"),
+            "and the one that refuses names the variable that makes it wait: {lines:?}"
+        );
+    }
 }

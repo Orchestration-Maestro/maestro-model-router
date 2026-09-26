@@ -35,4 +35,34 @@ exclude_re = [
   # poll and then kills the tool, so the caller still gets `None`. No test
   # can make the clock hit that instant.
   'src/memory/command\.rs:\d+:\d+: replace < with <= in output$',
+  # The same instant in `linger` in src/proxy/reply.rs, which drains a
+  # refused caller until a monotonic deadline. Anchored to the column of the
+  # deadline's `<`, because the bound's `<` on the same line is not
+  # equivalent and has a test.
+  'src/proxy/reply\.rs:\d+:52: replace < with <= in linger$',
+  # How much the relay in src/proxy/relay.rs moves per read. It is not a
+  # throughput setting: every read is written and flushed before the next,
+  # the body is copied to its declared length whatever the size of each
+  # step, and the bytes that arrive are the same bytes in the same order. A
+  # buffer of 1032 bytes rather than 8192 changes how many reads that takes
+  # and nothing a caller or a child can see.
+  'src/proxy/relay\.rs:\d+:\d+: replace \* with \+$',
+  # The same for the buffer `linger` in src/proxy/reply.rs drains a refused
+  # caller through: it reads to the same bound, deadline or end in smaller
+  # steps, and discards what it reads either way.
+  'src/proxy/reply\.rs:\d+:\d+: replace \* with \+ in linger$',
+  # `scored` in src/bench/rate.rs refuses a rate over zero elapsed seconds,
+  # which would be infinite. `>=` differs only when a request over a socket
+  # was timed at exactly zero, which no round trip is: the clock measures in
+  # nanoseconds on Linux.
+  'src/bench/rate\.rs:\d+:\d+: replace > with >= in scored$',
+  # `Cause::family` in src/proxy/refusal.rs calls a status below 500 the
+  # caller's error. `<=` differs only at 500 itself, and no cause carries
+  # 500: `Cause::describe` lists every status there is, and each is a 4xx
+  # or one of 501 to 504.
+  'src/proxy/refusal\.rs:\d+:\d+: replace < with <= in Cause::family$',
+  # `caching_layers` in src/catalog/estimate/cache.rs divides the layers by
+  # a full-attention interval above one. `>=` also divides at one, and every
+  # count divided by one is itself, which is what the other arm returns.
+  'src/catalog/estimate/cache\.rs:\d+:\d+: replace > with >= in caching_layers$',
 ]

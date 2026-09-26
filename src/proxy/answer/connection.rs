@@ -244,3 +244,29 @@ fn declared_body(length: &Length) -> Result<usize, Refusal> {
     }
     Ok(declared)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_body_of_the_documented_limit_is_read_and_one_byte_more_is_refused() {
+        // Eight mebibytes is the limit a refusal names and an operator plans
+        // a multimodal request around, so it is stated here as a number
+        // rather than read back from the constant that enforces it.
+        let limit = 8 * 1024 * 1024;
+
+        assert_eq!(
+            declared_body(&Length::Given(limit)).ok(),
+            Some(limit),
+            "a body of exactly the limit is one the router reads"
+        );
+        assert_eq!(
+            declared_body(&Length::Given(limit + 1))
+                .err()
+                .map(|refusal| refusal.cause()),
+            Some(Cause::BodyTooLarge),
+            "and a byte past it is refused before anything is allocated"
+        );
+    }
+}

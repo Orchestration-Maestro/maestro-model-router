@@ -52,9 +52,8 @@ pub(super) fn run(shared: &Weak<Shared>) {
         let Some(duration) = strong.idle_window.duration() else {
             return;
         };
-        let interval = (duration / 2).max(MIN_INTERVAL);
 
-        let next = deadline.unwrap_or_else(Instant::now) + interval;
+        let next = next_sweep(deadline, duration);
         if strong
             .stop
             .wait(next.saturating_duration_since(Instant::now()))
@@ -79,6 +78,15 @@ pub(super) fn run(shared: &Weak<Shared>) {
             ));
         }
     }
+}
+
+/// When the sweep after `previous` is due, for an idle window of `window`.
+///
+/// Half the window after the previous tick, floored at [`MIN_INTERVAL`], or
+/// that long from now for the first. Apart from `run` so the schedule can be
+/// read without a thread that sleeps it out.
+fn next_sweep(previous: Option<Instant>, window: Duration) -> Instant {
+    previous.unwrap_or_else(Instant::now) + (window / 2).max(MIN_INTERVAL)
 }
 
 #[cfg(test)]
@@ -120,6 +128,23 @@ mod tests {
              when stop is called, rather than sleeping out its interval: \
              waited {:?}",
             started.elapsed()
+        );
+    }
+
+    #[test]
+    fn sweeps_fall_half_a_window_apart_from_the_previous_tick_and_no_closer_than_the_floor() {
+        let previous = Instant::now();
+
+        assert_eq!(
+            next_sweep(Some(previous), Duration::from_secs(600)),
+            previous + Duration::from_secs(300),
+            "half the window after the tick before, however long that sweep \
+             took, so the timing guarantee of one and a half windows holds"
+        );
+        assert_eq!(
+            next_sweep(Some(previous), Duration::from_millis(50)),
+            previous + MIN_INTERVAL,
+            "and never closer together than the floor"
         );
     }
 

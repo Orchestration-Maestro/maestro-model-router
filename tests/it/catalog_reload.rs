@@ -44,6 +44,11 @@ fn catalog_at(context: u32) -> String {
     )
 }
 
+/// The body the load endpoint takes, naming one model.
+fn naming(model: &str) -> String {
+    format!("{{\"model\":\"{model}\"}}")
+}
+
 /// The JSON body of a reply, or a panic naming what arrived instead.
 fn body(reply: &str) -> Value {
     let body = reply.split_once("\r\n\r\n").map_or_else(
@@ -144,6 +149,54 @@ fn a_reload_adds_an_entry_the_catalog_did_not_have() {
     assert_eq!(
         offered_context(serving.address(), "gemma4"),
         2048,
-        "the entry that was added is served"
+        "the entry that was added is listed"
+    );
+    for id in ["gemma3", "gemma4"] {
+        let loaded = request(serving.address(), &post("/models/load", &naming(id)));
+        assert_eq!(
+            status(&loaded),
+            Some(200),
+            "{id}, loaded by nothing before the reload, still has a slot to \
+             load into after it:\n{loaded}"
+        );
+    }
+}
+
+#[test]
+fn a_reload_names_each_running_child_its_entry_no_longer_describes() {
+    let two = format!(
+        "{}\n[models.gemma4]\npath = \"{MODEL}\"\ncontext_size = 2048\n",
+        catalog_at(4096)
+    );
+    let serving = reloadable(&two, ModelsRoot::with(&[MODEL]));
+    for id in ["gemma3", "gemma4"] {
+        let loaded = request(serving.address(), &post("/models/load", &naming(id)));
+        assert_eq!(status(&loaded), Some(200), "{id} loads:\n{loaded}");
+    }
+
+    // One entry edited and the other dropped, each while its child runs.
+    serving.rewrite(&catalog_at(8192));
+
+    let reply = request(serving.address(), &post("/reload", ""));
+    assert_eq!(status(&reply), Some(200), "got:\n{reply}");
+    let report = body(&reply);
+    assert_eq!(
+        report["removed"],
+        serde_json::json!(["gemma4"]),
+        "the reply says what went, and only that, got:\n{report}"
+    );
+    let mut superseded: Vec<&str> = report["superseded"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a 'superseded' array, got:\n{report}"))
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    superseded.sort_unstable();
+    assert_eq!(
+        superseded,
+        ["gemma3", "gemma4"],
+        "a child started from an entry that has since changed, and one whose \
+         entry is gone, both answer for a catalog that no longer says so, \
+         got:\n{report}"
     );
 }

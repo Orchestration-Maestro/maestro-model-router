@@ -53,12 +53,6 @@ reason = "a launcher of the support family, built on the shared private launch c
 [[exception]]
 rule = "ARC-005"
 path = "tests/it/support/mod.rs"
-item = "probed"
-reason = "a launcher of the support family, built on the shared private launch code"
-
-[[exception]]
-rule = "ARC-005"
-path = "tests/it/support/mod.rs"
 item = "reloadable"
 reason = "a launcher of the support family, built on the shared private launch code"
 
