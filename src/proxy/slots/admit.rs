@@ -123,7 +123,7 @@ impl Slots {
     /// runs under -- which it has to, since the room is not free until the
     /// process is gone -- and nothing else.
     ///
-    /// Each is taken by [`take_if_idle`](super::super::loaded::take_if_idle),
+    /// Each is taken by [`take_if_idle`],
     /// which re-reads the busy signal for the reason [`Slots::held`] records.
     /// An entry with no slot left has nothing in it to unload.
     ///
