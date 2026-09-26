@@ -70,6 +70,7 @@ in place.
 │   ├── admission/                                                 # Deciding what may be loaded, and what must be unloaded first
 │   │   ├── budget.rs                                              # Where the budget comes from: the environment, the machine, or a test
 │   │   ├── decision.rs                                            # The decision itself: whether a wanted entry fits, and what goes first
+│   │   ├── guests.rs                                              # The guest rule, driven from values as the rest of admission's policy is
 │   │   ├── mod.rs                                                 # Deciding what may be loaded, and what must be unloaded first
 │   │   ├── room.rs                                                # What there is to fit into, and the words for when there is not
 │   │   └── subject.rs                                             # What a decision is about: the models held, and the one being asked for
@@ -216,6 +217,7 @@ in place.
 │       ├── duplication_allowlist.rs                               # Copy-paste detection, via similarity-rs (APTED tree edit distance, so it
 │       ├── english_only.rs                                        # English-only gate
 │       ├── eviction_policy.rs                                     # What the router unloads to make room, and what it refuses to touch
+│       ├── free_room.rs                                           # Loading a model only into free room, when a request asks
 │       ├── gguf_metadata.rs                                       # What the router reads out of a model file
 │       ├── idle_unload.rs                                         # Idle unloading, driven through the router rather than through the policy
 │       ├── idle_window.rs                                         # The idle window, read from its variable
