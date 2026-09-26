@@ -172,6 +172,8 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
+    use super::super::super::head::AllowedRoom;
+    use super::super::admit::Asked;
     use super::*;
     use crate::launch::{Failure, Server};
 
@@ -217,8 +219,12 @@ mod tests {
         ))
         .expect("this test binary's own path is a file");
 
+        let asked = Asked {
+            entry,
+            room: AllowedRoom::Any,
+        };
         let refused = slots
-            .child(&older, entry, &server, Path::new("/somewhere"))
+            .child(&older, asked, &server, Path::new("/somewhere"))
             .err();
 
         assert!(

@@ -21,6 +21,7 @@ use std::net::TcpStream;
 use crate::build::{COMMIT, VERSION};
 use crate::catalog::Entry;
 
+use super::super::head::AllowedRoom;
 use super::super::refusal::{Cause, Refusal};
 use super::super::reply;
 use super::super::shared::Shared;
@@ -174,11 +175,20 @@ pub(super) fn reload(stream: &TcpStream, shared: &Shared) -> io::Result<()> {
 /// ready.
 ///
 /// Through the admission a request takes, so a load evicts what a request
-/// would and is refused for want of room as a request would be. The reply
-/// waits for the model rather than for the decision, unlike llama.cpp's own:
-/// a caller told `success` can ask the model at once.
-pub(super) fn load(stream: &TcpStream, shared: &Shared, entry: &Entry) -> io::Result<()> {
-    let outcome = shared.child(entry).map(|_| done()).map_err(Refusal::from);
+/// would and is refused for want of room as a request would be, in the room
+/// its caller allows. The reply waits for the model rather than for the
+/// decision, unlike llama.cpp's own: a caller told `success` can ask the
+/// model at once.
+pub(super) fn load(
+    stream: &TcpStream,
+    shared: &Shared,
+    entry: &Entry,
+    room: AllowedRoom,
+) -> io::Result<()> {
+    let outcome = shared
+        .child(entry, room)
+        .map(|_| done())
+        .map_err(Refusal::from);
     answered(stream, outcome)
 }
 

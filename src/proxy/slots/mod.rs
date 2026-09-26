@@ -7,8 +7,8 @@
 //! and nothing else's.
 //!
 //! The policy itself is not here. `admission` decides what may be loaded from
-//! four values and no machine at all; this acts on that decision, which is the
-//! half that kills processes.
+//! a handful of values and no machine at all; this acts on that decision,
+//! which is the half that kills processes.
 //!
 //! A door: the type is defined in `table`, beside the rules of the table it
 //! holds, and each child adds the methods of one concern to it. A child names
@@ -23,5 +23,6 @@ mod sweep;
 mod table;
 mod view;
 
+pub(super) use admit::Asked;
 pub(in crate::proxy) use lease::Lease;
 pub(super) use table::Slots;

@@ -8,7 +8,9 @@
 //! budget will never fit, however long anybody waits, and is refused at once.
 //! A model whose room is held by something still answering will fit as soon as
 //! that answer ends, and waiting for it is the difference between a router
-//! that queues and one that tells every caller to write a retry loop.
+//! that queues and one that tells every caller to write a retry loop. Unless
+//! the caller allowed free room alone: the room it would wait for could only
+//! be made by an unload, which it forbade, so it is refused at once as well.
 //!
 //! The wait does not hold the admission lock. It used to, which kept waiting
 //! requests in order but queued every other admission behind them -- a model
@@ -26,6 +28,8 @@ use crate::admission::{Decision, Wanted};
 use crate::catalog::{Catalog, Entry};
 use crate::launch::{Failure, Server};
 
+use super::super::head::AllowedRoom;
+use super::admit::Asked;
 use super::lease::Lease;
 use super::queue::Queue;
 use super::table::Slots;
@@ -49,18 +53,20 @@ impl Slots {
     ///
     /// # Errors
     ///
-    /// Returns a [`Failure::Refused`] when the entry cannot fit at all, and a
-    /// [`Failure::Contended`] when the wait expired with its room still held,
-    /// or the catalog was reloaded under it. The difference is what a caller
-    /// should do next, and the proxy carries it as a `Retry-After` on the ones
-    /// a retry can fix.
+    /// Returns a [`Failure::Refused`] when the entry cannot fit at all, or when
+    /// its caller allowed free room alone and loading it would need a model
+    /// unloaded, now or once a busy one is done; and a [`Failure::Contended`]
+    /// when the wait expired with its room still held, or the catalog was
+    /// reloaded under it. The difference is what a caller should do next, and
+    /// the proxy carries it as a `Retry-After` on the ones a retry can fix.
     pub(super) fn room_for<'a>(
         &'a self,
         mut queue: MutexGuard<'a, Queue>,
         catalog: &Catalog,
-        entry: &Entry,
+        asked: Asked<'_>,
         root: &Path,
     ) -> (MutexGuard<'a, Queue>, Result<Option<Lease<'a>>, Failure>) {
+        let entry = asked.entry;
         let deadline = Instant::now() + self.wait.duration();
         let arrived_under = queue.reloads;
         let mut ticket = None;
@@ -84,7 +90,14 @@ impl Slots {
             if let Err(failure) = Server::model_file(entry, root) {
                 break Err(failure);
             }
-            let held = match self.look(catalog, entry, queue.may_take(ticket)) {
+            // Without the header a dead child is a candidate like any other,
+            // and the unload the decision names takes it. A free-room request
+            // unloads nothing, so the dead child would refuse it for room
+            // nobody holds; the reaper empties it only under an idle window.
+            if asked.room == AllowedRoom::Free {
+                self.sweep_exited(catalog);
+            }
+            let held = match self.look(catalog, asked, queue.may_take(ticket)) {
                 Ok(Room::Made) => break Ok(None),
                 Ok(Room::Held(held)) => held,
                 Err(failure) => break Err(failure),
@@ -110,16 +123,22 @@ impl Slots {
     }
 
     /// One look at the room, unloading what has to go when this request may.
-    fn look(&self, catalog: &Catalog, entry: &Entry, may_take: bool) -> Result<Room, Failure> {
+    fn look(&self, catalog: &Catalog, asked: Asked<'_>, may_take: bool) -> Result<Room, Failure> {
+        let entry = asked.entry;
         // Asked on every look, not once. What a wait waits for is memory
         // being released, and the device is the only thing that knows when
         // that has actually happened: a child that has exited frees its pages
         // whether or not the ledger has caught up.
         let device_free_mib = self.budget.probe().device().map(|device| device.free_mib());
-        match self
-            .budget
-            .admit(&self.held(catalog), &Wanted::of(entry), device_free_mib)
-        {
+        let (loaded, guests) = self.held_and_guests(catalog);
+        let decision =
+            self.budget
+                .admit_with_guests(&loaded, &guests, &Wanted::of(entry), device_free_mib);
+        // Before the decision is acted on at all, joining the line included.
+        if let Some(refusal) = asked.refusal(&decision) {
+            return Err(refusal);
+        }
+        match decision {
             Decision::Fits => Ok(Room::Made),
             // Room that is there for the taking, but not this request's to
             // take while an earlier one waits for room of its own.

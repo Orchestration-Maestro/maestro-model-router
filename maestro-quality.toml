@@ -16,12 +16,6 @@ words = ["FO"]
 
 [[exception]]
 rule = "ARC-005"
-path = "src/admission/mod.rs"
-item = "Decision"
-reason = "it is what admission's pure policy returns and the proxy acts on; the proxy's slots are its only library caller, but moving it there would put the policy beside the processes and sockets it is kept apart from, so that its unit tests drive every outcome without them"
-
-[[exception]]
-rule = "ARC-005"
 path = "src/launch/mod.rs"
 item = "models_root"
 reason = "where catalog locations resolve is the launcher's to say; bench is its only library caller, but the binary's launch and serve commands resolve the models root through it too, and the tests reach it by running the binary, neither of which the rule counts"

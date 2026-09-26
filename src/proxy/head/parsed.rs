@@ -27,6 +27,30 @@ pub(in crate::proxy) enum Length {
     Malformed(String),
 }
 
+/// The header a request limits the room its model may take with.
+///
+/// Spelt here as a caller sends it, which is how a refusal quotes it. The name
+/// is read in any case, as every header name is.
+pub(in crate::proxy) const ROOM: &str = "X-Model-Router-Room";
+
+/// Which room a request allows its model to be loaded into, as [`ROOM`] says.
+///
+/// Two rather than a flag, because each is a promise to a different caller.
+/// Most want an answer and do not mind what it costs the models beside
+/// theirs. Some must never cost another model its place -- a search that
+/// embeds a query while somebody is talking to a chat model -- and would
+/// rather be refused than served by an unload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::proxy) enum AllowedRoom {
+    /// No header: room nothing holds, or room made by unloading an idle
+    /// model, as every request had before the header existed.
+    Any,
+    /// `free`: room nothing holds, and nothing else. What would need a model
+    /// unloaded is refused before anything is, and what is loaded is a guest
+    /// until it is unloaded: the first to give its room back.
+    Free,
+}
+
 /// A parsed request head.
 ///
 /// The endpoint is resolved at parse time because every caller wants it: it
@@ -52,6 +76,14 @@ pub(in crate::proxy) struct Head {
     /// the interim answer has to come from here and the header does not
     /// travel on.
     pub(in crate::proxy) expects_continue: bool,
+    /// Which room the request allows its model to be loaded into, or the
+    /// refusal a value the router does not know earns.
+    ///
+    /// Kept rather than refused here, as a malformed length is: who may use
+    /// the router is asked before what they asked for, and a preflight that
+    /// carried something odd is still a preflight. The header travels on to
+    /// the child with the rest, which has no use for it and ignores it.
+    pub(in crate::proxy) room: Result<AllowedRoom, Refusal>,
 }
 
 /// Turns the lines of a head into the parts the router routes on.
@@ -79,6 +111,7 @@ pub(in crate::proxy) fn parse(lines: &[String]) -> Result<Head, Refusal> {
     let mut length = Length::Absent;
     let mut chunked = false;
     let mut expects_continue = false;
+    let mut room = Ok(AllowedRoom::Any);
     for line in lines.iter().skip(1) {
         // A line with no colon is not a header. Skipped rather than refused:
         // the router is a relay, and inventing a rule the child does not have
@@ -103,6 +136,11 @@ pub(in crate::proxy) fn parse(lines: &[String]) -> Result<Head, Refusal> {
         if name.eq_ignore_ascii_case("expect") && value.eq_ignore_ascii_case("100-continue") {
             expects_continue = true;
         }
+        // A refusal stands however many more of these follow it: a header
+        // said twice, once misspelt, has still been misspelt.
+        if name.eq_ignore_ascii_case(ROOM) {
+            room = room.and_then(|_| allowed_room(value));
+        }
         headers.push((name.to_owned(), value.to_owned()));
     }
 
@@ -113,12 +151,33 @@ pub(in crate::proxy) fn parse(lines: &[String]) -> Result<Head, Refusal> {
         length,
         chunked,
         expects_continue,
+        room,
     })
 }
 
 /// A request this router cannot read as one.
 fn malformed(reason: &str) -> Refusal {
     Refusal::new(Cause::MalformedRequest, reason)
+}
+
+/// The room one value of [`ROOM`] allows.
+///
+/// `free`, and nothing else. A value the router does not know is refused
+/// rather than read as no header, because the caller who sent it believes it
+/// holds: a search that meant to keep a chat model loaded would unload it
+/// without a word.
+fn allowed_room(value: &str) -> Result<AllowedRoom, Refusal> {
+    if value == "free" {
+        return Ok(AllowedRoom::Free);
+    }
+    Err(Refusal::new(
+        Cause::UnknownRoom,
+        format!(
+            "'{ROOM}: {value}' is not a room this router knows: send \
+             '{ROOM}: free' to load a model only into room nothing holds, or \
+             no such header to let an idle model be unloaded to make room"
+        ),
+    ))
 }
 
 impl Head {
@@ -330,6 +389,55 @@ mod tests {
             "another expectation, and the value under another name, ask for \
              no interim line"
         );
+    }
+
+    #[test]
+    fn the_room_header_is_read_whatever_the_case_of_its_name() {
+        for name in ["X-Model-Router-Room", "x-model-router-room"] {
+            let head = parse(&lines(&[
+                "GET /models/gemma3/v1/echo HTTP/1.1",
+                &format!("{name}: free"),
+            ]))
+            .expect("a well-formed head");
+
+            assert_eq!(
+                head.room,
+                Ok(AllowedRoom::Free),
+                "'{name}' is the header, whatever the case of its name"
+            );
+        }
+        assert_eq!(
+            head_of("/models/gemma3/v1/echo").room,
+            Ok(AllowedRoom::Any),
+            "and a request that says nothing allows any room, as every \
+             request did before the header existed"
+        );
+    }
+
+    #[test]
+    fn a_room_other_than_free_is_refused_however_often_it_is_said() {
+        // Repeated as well as alone: a router that read only the first or
+        // only the last of two would ignore the other, which is the one thing
+        // a misspelt option must never be.
+        for values in [&["any"][..], &[""], &["free", "any"], &["any", "free"]] {
+            let mut head = lines(&["GET /models/gemma3/v1/echo HTTP/1.1"]);
+            head.extend(
+                values
+                    .iter()
+                    .map(|value| format!("X-Model-Router-Room: {value}")),
+            );
+
+            let refusal = parse(&head)
+                .expect("a head the router can still refuse deliberately")
+                .room
+                .expect_err("a misspelt option is not no option");
+
+            assert_eq!(refusal.cause(), Cause::UnknownRoom, "{values:?}");
+            assert!(
+                refusal.to_string().contains("free"),
+                "the refusal names the value it takes: {refusal}"
+            );
+        }
     }
 
     #[test]

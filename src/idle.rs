@@ -148,8 +148,9 @@ impl IdleWindow {
     /// The identifiers to unload, coldest first.
     ///
     /// On-demand, not busy, and unused for at least the window. Coldest
-    /// first, matching `Budget::admit`, so a reader does not have to wonder
-    /// whether the two orders differ.
+    /// first, as `Budget::admit_with_guests` orders all but its guests.
+    /// Guests are not put first here: every entry this names is unloaded, so
+    /// the order says only which goes first, never which goes.
     #[must_use]
     pub fn expired(&self, loaded: &[Loaded], now: Instant) -> Vec<String> {
         let Some(window) = self.0 else {

@@ -4,7 +4,6 @@
 //! kills a process to make room now; this half only ever removes, on a
 //! schedule nothing is waiting on.
 
-use std::process::ExitStatus;
 use std::sync::PoisonError;
 use std::time::{Duration, Instant};
 
@@ -15,16 +14,25 @@ use super::super::loaded::{Loaded, Slot, Take, take_if_exited, take_if_idle};
 use super::table::Slots;
 
 impl Slots {
-    /// Empties every slot whose child has exited on its own, and names each
-    /// with the status it left.
+    /// Empties every slot whose child has exited on its own, and says which,
+    /// with the status each left.
     ///
     /// Every slot, whatever its residency and whatever the idle window: a
     /// process that is gone is not a candidate for anything, it is a slot
     /// holding an estimate for memory nobody has. Dropping the dead child
     /// reaps it.
-    pub(in super::super) fn sweep_exited(&self, catalog: &Catalog) -> Vec<(String, ExitStatus)> {
+    ///
+    /// The reaper runs this on every tick, and a free-room request before it
+    /// looks for room: that request unloads nothing, so a dead child left in
+    /// its slot would refuse it for room nobody holds.
+    pub(in super::super) fn sweep_exited(&self, catalog: &Catalog) {
         let every = catalog.entries.iter().map(|entry| entry.id.clone());
-        self.swept(every, take_if_exited)
+        for (id, status) in self.swept(every, take_if_exited) {
+            self.voice.say(&format!(
+                "{id} exited on its own ({status}); its slot was emptied, and the \
+                 next request for it starts it again"
+            ));
+        }
     }
 
     /// Unloads what has gone idle past `window`, and names what actually

@@ -39,6 +39,8 @@ pub(super) enum Cause {
     ChunkedBody,
     /// The `Content-Length` will not parse.
     MalformedLength,
+    /// `X-Model-Router-Room` names a room this router does not know.
+    UnknownRoom,
     /// The generic endpoint was sent no declared body.
     LengthRequired,
     /// The body is larger than the router will read.
@@ -83,6 +85,7 @@ impl Cause {
             Self::MethodNotAllowed(_) => (405, "method_not_allowed"),
             Self::ChunkedBody => (501, "chunked_body_not_implemented"),
             Self::MalformedLength => (400, "malformed_content_length"),
+            Self::UnknownRoom => (400, "unknown_room"),
             Self::LengthRequired => (411, "content_length_required"),
             Self::BodyTooLarge => (413, "body_too_large"),
             Self::BodyIncomplete => (400, "body_incomplete"),

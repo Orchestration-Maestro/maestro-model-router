@@ -72,10 +72,11 @@ where the router runs.
 3. Admission gives the request its model. A model already running takes it.
    One that is not running must fit twice: under the memory budget, which
    counts each model at its catalog estimate until it has been measured, and in
-   what the device has free right now. To make room, admission unloads the
-   coldest idle on-demand model, never one that is answering. When a busy model
-   holds the only room, the request waits in line, a minute by default, and is
-   refused with `503` if the room is still held then.
+   what the device has free right now. To make room, admission unloads an idle
+   on-demand model, one loaded into free room first and otherwise the coldest,
+   never one that is answering. When a busy model holds the only room, the
+   request waits in line, a minute by default, and is refused with `503` if the
+   room is still held then.
 4. The model's `llama-server` starts on a loopback port and must answer within
    its startup budget. Resident models start with the router and are never
    evicted.
@@ -440,15 +441,56 @@ A child starts on the first request for its entry and is kept while there is
 room for it, so that request pays the startup cost and every later one finds
 the child ready.
 
+### Loading only into free room
+
+With a budget set, a request for a model that does not fit unloads an idle
+model to make room, as the
+[next section](#what-eviction-does-and-what-it-never-does) describes. A caller
+whose request must never cost another model its place, such as a search that
+embeds a query while somebody is talking to a chat model, says so with a
+header:
+
+```sh
+curl http://127.0.0.1:8080/models/gemma3/v1/chat/completions \
+  -H 'X-Model-Router-Room: free' \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"hello"}]}'
+```
+
+Such a request is admitted only into free room. A model already loaded is
+served as usual, and one that fits in what the budget has left and in what the
+device reports free is loaded as usual. One that could load only by unloading
+another model is refused before anything is unloaded: `503` with
+`insufficient_room`, and a message naming the header and the models that
+would have gone. It is refused at once rather than held in line, because a
+model that stops being busy is still loaded, so waiting would end in the same
+refusal. The header works the same on both endpoints and on
+`POST /models/load`, and a request without it is admitted exactly as before.
+
+The name is read in any case, as every header name is. The value is `free` and
+nothing else: any other, an empty one included, is refused with `400` and
+`unknown_room`, because a misspelt option read as no option would unload the
+very model its caller meant to keep.
+
+A model loaded into free room is a guest until it is unloaded. When a later
+request without the header needs room, idle guests are unloaded before any
+other model, the coldest guest first, and only then the coldest of the rest;
+with no guest loaded, eviction is exactly as the next section describes. So an
+embedder that a search loaded into free room gives its room back before a chat
+model loses its place. A free-room request unloads nothing, a guest included.
+A guest that is answering is never unloaded, like any model being read from,
+which is one of the known limits below.
+
 ### What eviction does, and what it never does
 
-With a budget set, a model that does not fit causes the coldest idle on-demand
-model to be unloaded first. Two questions are asked before a model is started,
-and both have to say yes. The budget is a ceiling on what the loaded models
-cost, where each costs its catalog estimate until it has been measured and the
-larger of the two afterwards. A model that turns out to hold four times its
-estimate is counted at what it holds from the moment that is known, and the
-operator reads it on the line the load prints:
+With a budget set, a model that does not fit causes an idle on-demand model to
+be unloaded first: the coldest idle [guest](#loading-only-into-free-room) if
+there is one, and otherwise the coldest idle model. Two questions are asked
+before a model is started, and both have to say yes. The budget is a ceiling
+on what the loaded models cost, where each costs its catalog estimate until it
+has been measured and the larger of the two afterwards. A model that turns out
+to hold four times its estimate is counted at what it holds from the moment
+that is known, and the operator reads it on the line the load prints:
 
 ```text
 qwen3-06b: loading, estimated at 1024 MiB
@@ -535,7 +577,7 @@ for them:
 pgrep -af llama-server
 ```
 
-**Four smaller things are known and not addressed.** Recorded so the next
+**Five smaller things are known and not addressed.** Recorded so the next
 slice inherits them rather than discovering them:
 
 - The loading thread keeps the router answering, but only what needs no child.
@@ -552,6 +594,11 @@ slice inherits them rather than discovering them:
 - Taking a slot drops the child inside the slot's own guard, so the kill and
   the reaping run under it. A child that will not die holds that guard, and
   with it every admission.
+- A guest gives its room back first only while it is idle. When the room a
+  request needs is held by a guest that is answering, such as an embedder a
+  search is still reading from, the coldest idle model goes instead, a chat
+  model included; with none idle, the request waits for room as it would for
+  any busy model.
 
 **A stream is passed through as it arrives.** The router has no HTTP
 dependency: it reads the request head (the request line and the headers),
@@ -595,6 +642,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | the method is none a model is asked anything with | `405`, with `Allow` | `method_not_allowed` |
 | the request body announces chunked framing | `501`; send a body with a `Content-Length` | `chunked_body_not_implemented` |
 | the `Content-Length` will not parse | `400`, quoting back what arrived | `malformed_content_length` |
+| `X-Model-Router-Room` carries a value other than `free` | `400`, naming the one it takes | `unknown_room` |
 | the generic endpoint is sent no declared body | `411`, naming the header it wanted | `content_length_required` |
 | the body is larger than the router will read | `413`, naming both sizes | `body_too_large` |
 | the body ends before its declared length | `400` | `body_incomplete` |
@@ -604,6 +652,7 @@ those and never on prose; the `message` is for the reader and may be reworded.
 | the child misses its startup budget | `504`, naming the budget | `startup_timeout` |
 | the room is held by a request that reached it first | `503`, with `Retry-After` | `room_contended` |
 | nothing can be unloaded to make room | `503`, naming what is holding the memory | `insufficient_room` |
+| the request carries `X-Model-Router-Room: free` and its model would load only by unloading another | `503`, naming the header and the models that would have gone | `insufficient_room` |
 | an unload names a model that is answering a request | `409` | `model_busy` |
 
 Once a response has begun there is no status left to send, so a failure after

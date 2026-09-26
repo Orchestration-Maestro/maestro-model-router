@@ -1,13 +1,14 @@
 //! Deciding what may be loaded, and what must be unloaded first.
 //!
 //! This module touches no process and no socket. It takes a budget, what is
-//! loaded now, what is wanted, and what the device has free, and returns a
-//! decision; acting on that decision belongs to the caller. That separation
-//! is deliberate: the policy is the part of eviction that is hard to get
-//! right, and keeping it a pure function means it can be driven exhaustively
-//! from a handful of values without a machine, a model, or a clock that has
-//! to be waited on. The one place the machine is asked is `Budget`'s own
-//! construction, in `budget.rs`, and it is asked before any of this runs.
+//! loaded now and which of it are guests, what is wanted, and what the device
+//! has free, and returns a decision; acting on that decision belongs to the
+//! caller. That separation is deliberate: the policy is the part of eviction
+//! that is hard to get right, and keeping it a pure function means it can be
+//! driven exhaustively from a handful of values without a machine, a model,
+//! or a clock that has to be waited on. The one place the machine is asked is
+//! `Budget`'s own construction, in `budget.rs`, and it is asked before any of
+//! this runs.
 //!
 //! Two rules shape every decision here.
 //!
@@ -18,7 +19,10 @@
 //! read -- and the caller sees a stream stop early, which is indistinguishable
 //! from a model that finished.
 //!
-//! **The coldest candidate goes first.** When more than one could be unloaded,
+//! **Guests go first, and then the coldest.** A guest is a model loaded into
+//! free room, for a caller that would rather have been refused than cost
+//! another model its place, so it gives its room back before any model
+//! loaded without that promise. Among the guests, and then among the rest,
 //! the one that answered longest ago is chosen, because it is the one least
 //! likely to be asked for again in the next moment.
 //!
@@ -33,6 +37,8 @@
 
 mod budget;
 mod decision;
+#[cfg(test)]
+mod guests;
 mod room;
 mod subject;
 

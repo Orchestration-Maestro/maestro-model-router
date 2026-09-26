@@ -11,15 +11,54 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, PoisonError};
 
+use crate::admission::Decision;
 use crate::catalog::{Catalog, Entry};
 use crate::launch::{Failure, Server};
 
+use super::super::head::{AllowedRoom, ROOM};
 use super::super::loaded::{Take, live_child, take_if_idle};
 use super::lease::Lease;
 use super::table::Slots;
 
+/// An entry to serve, and the room its caller allows it to be loaded into.
+///
+/// One value because the two go everywhere together: every step between a
+/// request and a decision may end in loading the entry, and the room has to
+/// reach the one decision that would unload something to make it.
+#[derive(Clone, Copy)]
+pub(in crate::proxy) struct Asked<'a> {
+    pub(in crate::proxy) entry: &'a Entry,
+    pub(in crate::proxy) room: AllowedRoom,
+}
+
+impl Asked<'_> {
+    /// The refusal owed instead of acting on `decision`, when acting on it
+    /// would unload a model and the caller allowed free room alone.
+    ///
+    /// Asked before anything is unloaded, and before a place in line is
+    /// taken. Such a caller has nothing to wait for: a model that stops being
+    /// busy is still loaded, so the room it holds does not free itself, and a
+    /// wait could only end in this same refusal, later.
+    pub(super) fn refusal(&self, decision: &Decision) -> Option<Failure> {
+        if self.room == AllowedRoom::Any {
+            return None;
+        }
+        let why = match decision {
+            Decision::Unload(ids) => format!("loading it would unload {}", ids.join(", ")),
+            Decision::Blocked(held) => held.clone(),
+            Decision::Fits | Decision::Refuse(_) => return None,
+        };
+        Some(Failure::Refused(format!(
+            "'{}' was asked for with '{ROOM}: free', and there is no free \
+             room for it: {why}; nothing was unloaded",
+            self.entry.id
+        )))
+    }
+}
+
 impl Slots {
-    /// The child serving this entry, started if there is room for it.
+    /// The child serving this entry, started if there is room for it that
+    /// its caller allows.
     ///
     /// # Errors
     ///
@@ -28,14 +67,14 @@ impl Slots {
     pub(in super::super) fn child(
         &self,
         catalog: &Catalog,
-        entry: &Entry,
+        asked: Asked<'_>,
         server: &Server,
         root: &Path,
     ) -> Result<Lease<'_>, Failure> {
-        if let Some(child) = self.running(entry) {
+        if let Some(child) = self.running(asked.entry) {
             return Ok(child);
         }
-        self.admit(catalog, entry, server, root)
+        self.admit(catalog, asked, server, root)
     }
 
     /// Which entries are loaded right now, by id.
@@ -79,10 +118,11 @@ impl Slots {
     fn admit(
         &self,
         catalog: &Catalog,
-        entry: &Entry,
+        asked: Asked<'_>,
         server: &Server,
         root: &Path,
     ) -> Result<Lease<'_>, Failure> {
+        let entry = asked.entry;
         let admitting = self
             .admission
             .lock()
@@ -96,12 +136,12 @@ impl Slots {
                 entry.id
             )));
         };
-        let (_admitting, found) = self.room_for(admitting, catalog, entry, root);
+        let (_admitting, found) = self.room_for(admitting, catalog, asked, root);
         if let Some(child) = found? {
             return Ok(child);
         }
 
-        let loaded = self.start(entry, server, root)?;
+        let loaded = self.start(asked, server, root)?;
         // The handed-out handle and the slot's own come into existence
         // together under the lock, which is the slot invariant in `loaded`.
         // The handle was bound before it is locked: the map's lock has to be

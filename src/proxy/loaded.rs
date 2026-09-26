@@ -25,6 +25,9 @@ pub(super) struct Loaded<C = Child> {
     /// What the machine saw it holding once it had loaded, so admission
     /// counts what it costs rather than only what the catalog guessed.
     pub(super) measured: Measurement,
+    /// Whether it was loaded into free room, which makes it a guest until it
+    /// is unloaded: the first to give its room back.
+    pub(super) guest: bool,
 }
 
 /// One entry's child, held apart from every other entry's.
@@ -210,6 +213,7 @@ mod tests {
             child: Arc::clone(&child),
             last_used: Instant::now(),
             measured: Measurement::UNKNOWN,
+            guest: false,
         }));
         (slot, child)
     }

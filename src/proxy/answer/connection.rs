@@ -7,7 +7,7 @@ use std::io::{self, BufReader};
 use std::net::TcpStream;
 
 use super::super::endpoint::Endpoint;
-use super::super::head::{self, Head, Length};
+use super::super::head::{self, AllowedRoom, Head, Length};
 use super::super::refusal::{Cause, Refusal};
 use super::super::shared::Shared;
 use super::super::{body, metrics, relay, reply};
@@ -59,12 +59,14 @@ pub(in crate::proxy) fn to(shared: &Shared, stream: &TcpStream) -> io::Result<()
         );
     }
 
-    // Framing first, before anything is read, looked up or started. A request
-    // this router cannot frame is one it will not serve whatever it names, so
-    // deciding that here costs neither a body nor a model load.
-    if let Err(refusal) = framing(&request) {
-        return reply::refuse(stream, &refusal);
-    }
+    // Framing first, and the room the request allows, before anything is
+    // read, looked up or started. A request this router cannot frame, or
+    // whose room it does not know, is one it will not serve whatever it
+    // names, so deciding that here costs neither a body nor a model load.
+    let room = match framing(&request).and(request.room.clone()) {
+        Ok(room) => room,
+        Err(refusal) => return reply::refuse(stream, &refusal),
+    };
 
     // The router's own answers, settled before anything is read from the body
     // or started on a child's behalf: saying what could be served is never a
@@ -86,16 +88,17 @@ pub(in crate::proxy) fn to(shared: &Shared, stream: &TcpStream) -> io::Result<()
         _ => {}
     }
 
-    to_model(shared, stream, &mut reader, &request)
+    to_model(shared, stream, &mut reader, &request, room)
 }
 
 /// Answers a request some model has to answer, once the router has settled
-/// that it is not one of its own.
+/// that it is not one of its own, in the room the request allows.
 fn to_model(
     shared: &Shared,
     stream: &TcpStream,
     reader: &mut BufReader<&TcpStream>,
     request: &Head,
+    room: AllowedRoom,
 ) -> io::Result<()> {
     // Which model answers, and the body if reading it was what said so. The
     // dedicated endpoint names its model in the path and never looks, which
@@ -133,7 +136,7 @@ fn to_model(
         );
     };
     match request.endpoint {
-        Endpoint::Load => return own::load(stream, shared, entry),
+        Endpoint::Load => return own::load(stream, shared, entry, room),
         Endpoint::Unload => return own::unload(stream, shared, entry),
         _ => {}
     }
@@ -141,7 +144,7 @@ fn to_model(
     // The causes are distinguished by launch::Failure's variants rather than
     // by reading its message, so the wording of an error is not a
     // load-bearing interface.
-    let child = match shared.child(entry) {
+    let child = match shared.child(entry, room) {
         Ok(child) => child,
         Err(failure) => return reply::refuse(stream, &Refusal::from(failure)),
     };

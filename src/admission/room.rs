@@ -2,8 +2,9 @@
 //!
 //! Split from the decision beside it when `admission.rs` grew past the
 //! module-size gate, along the seam the two questions left: `decision`
-//! chooses candidates coldest first, and this says whether what they would
-//! free is enough -- on the ledger, on the device, or on neither.
+//! chooses candidates, guests first and then the coldest, and this says
+//! whether what they would free is enough -- on the ledger, on the device, or
+//! on neither.
 
 use crate::catalog::Residency;
 
