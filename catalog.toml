@@ -959,3 +959,55 @@ ubatch-size = "8192"
 fa = "on"
 np = "1"
 kv-unified = "true"
+
+# Two challengers to `embed`, declared for the bake-off (maestro-core T030),
+# not in use by search: a chunk set and a generation are built for each, and
+# the corpus's own questions decide. Both are Qwen's official GGUF files,
+# pinned by revision and checked against the publisher's SHA-256 on download
+# (2026-09-26):
+#
+#   Qwen/Qwen3-Embedding-0.6B-GGUF@370f27d7  Qwen3-Embedding-0.6B-Q8_0.gguf
+#     639150592 bytes, sha256 06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439
+#   Qwen/Qwen3-Embedding-4B-GGUF@f4602530    Qwen3-Embedding-4B-Q4_K_M.gguf
+#     2496703776 bytes, sha256 2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b
+#
+# Unlike BGE, these are decoder models: they pool the last token, which only
+# means something because the file appends <|endoftext|> (151643) to every
+# input -- checked with /tokenize. Checked against related text too: an
+# English question and its French translation score 0.89 and 0.88, an
+# unrelated sentence 0.10 and 0.16.
+#
+# A decoder keeps a cache, so its memory follows the micro-batch far more
+# than BGE's: at ubatch 8192 the 0.6B file held 6969 MiB and the 4B 9111 MiB;
+# at 2048, 3246 and 5368 MiB, with the same vectors to three decimals and a
+# 7,000-token input still embedded whole (a causal model may span
+# micro-batches, which an encoder may not). Hence 2048 below, and each
+# estimate a twentieth over its measurement, to a quarter gibibyte.
+# Measured on an RTX 5090 with llama-server from build-cuda-13.3.
+[models.embed-qwen3-06b]
+path = "llm/qwen/qwen3-embedding-0.6b/Qwen3-Embedding-0.6B-Q8_0.gguf"
+context_size = 8192
+memory_estimate_mib = 3584
+
+[models.embed-qwen3-06b.flags]
+embeddings = "true"
+pooling = "last"
+batch-size = "8192"
+ubatch-size = "2048"
+fa = "on"
+np = "1"
+kv-unified = "true"
+
+[models.embed-qwen3-4b]
+path = "llm/qwen/qwen3-embedding-4b/Qwen3-Embedding-4B-Q4_K_M.gguf"
+context_size = 8192
+memory_estimate_mib = 5888
+
+[models.embed-qwen3-4b.flags]
+embeddings = "true"
+pooling = "last"
+batch-size = "8192"
+ubatch-size = "2048"
+fa = "on"
+np = "1"
+kv-unified = "true"
