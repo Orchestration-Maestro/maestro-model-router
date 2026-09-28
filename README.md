@@ -111,7 +111,7 @@ model-router check catalog.toml
 A usable catalog reports what it carries and exits zero:
 
 ```text
-catalog.toml is valid: 4 models
+catalog.toml is valid: 14 models
 ```
 
 An unusable one names every problem, each by the entry and the field it came

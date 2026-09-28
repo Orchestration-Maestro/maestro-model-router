@@ -252,11 +252,9 @@ fn one_entry_reports_all_of_its_own_faults() {
 ///
 /// `Budget::derived` holds a tenth of a device back, which is the right default
 /// for a machine nobody has measured. This one has been measured entry by
-/// entry with `model-router bench`, and the tenth was costing it real context:
-/// turbo38 needs 29745 MiB and a tenth-held budget is 29347, so a 27B at its
-/// trained window was refused over 398 MiB on a card with 32,607. The service
-/// sets `MAESTRO_MEMORY_BUDGET_MIB` to the total, and this test asserts
-/// against the same figure the estate runs with rather than a default it
+/// entry with `model-router bench`. The service sets
+/// `MAESTRO_MEMORY_BUDGET_MIB` to the total, and this test asserts against the
+/// same figure the estate runs with rather than a default it
 /// overrides.
 ///
 /// What stops a load running the card out is not this ceiling in any case.
@@ -273,6 +271,18 @@ fn shipped() -> Catalog {
     Catalog::parse(&text).unwrap_or_else(|report| {
         panic!("the shipped catalog must be valid:\n{report}");
     })
+}
+
+/// Files deleted by the owner on 2026-09-28 must not remain routable.
+#[test]
+fn the_shipped_catalog_omits_deleted_models() {
+    let catalog = shipped();
+    for removed in ["turbo38", "turbo38-long", "qwen38-uncensored", "qwopus38"] {
+        assert!(catalog.entry(removed).is_none(), "{removed} was deleted");
+    }
+    for retained in ["qwen38", "qwen38-semantic", "heretic38"] {
+        assert!(catalog.entry(retained).is_some(), "{retained} must remain");
+    }
 }
 
 /// A model caught in a repetition loop generates until its context is full --
