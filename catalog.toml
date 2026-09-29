@@ -769,6 +769,47 @@ fa = "on"
 np = "1"
 kv-unified = "true"
 
+# The reranker search uses from maestro-core M1: Qwen3-Reranker-8B at Q8_0.
+# Chosen over `rerank` on the whole pipeline, not on the reranker alone:
+# golden v2.2, everyday-30 and the owner's six cases, three quiet repeats
+# each, with bge-m3 retrieval and /3 chunks unchanged (maestro-core
+# combined run v2, 2026-09-29):
+#
+#   rerank (BGE), depth 30     right page first 101 of 120, delivered 109,
+#                              search p95 1,355 ms
+#   this entry, depth 30       right page first 113 of 120, delivered 111,
+#                              search p95 2,187 ms
+#
+# The owner accepted the slower search for it ("2.5s ok"). The 4B scored the
+# same as BGE, and depth 20 or a Q4 file only lost questions.
+#
+# Qwen publishes no GGUF of its rerankers. This file is a community
+# conversion of the official Apache-2.0 weights, pinned and checked (2026-09-28):
+#
+#   sinjab/Qwen3-Reranker-8B-Q8_0-GGUF@1a752c69  Qwen3-Reranker-8B-Q8_0.gguf
+#     8047134144 bytes, sha256 b0f8d65d024ad587a9d14ba91f1f0e3fc2ad59e11e46a3b7e00249c5efa11096
+#
+# It carries the classification head a reranker needs, and its scores match
+# a CPU reference run to the last digit on the two public health-gate pairs.
+# The flags below are the ones it was measured with, which the model card
+# records; change them only with a new card.
+# Resident size measured from the device delta while it served, about
+# 10,700 MiB: a twentieth over, to a quarter gibibyte.
+[models.rerank-qwen3-8b]
+path = "llm/qwen/qwen3-reranker-8b/Qwen3-Reranker-8B-Q8_0.gguf"
+context_size = 8192
+memory_estimate_mib = 11264
+
+[models.rerank-qwen3-8b.flags]
+reranking = "true"
+# A decoder keeps a cache, so the micro-batch sets its memory; 2048 is what
+# was measured, and every query-passage pair fits it.
+batch-size = "2048"
+ubatch-size = "2048"
+fa = "on"
+np = "1"
+kv-unified = "true"
+
 # Two challengers to `embed`, declared for the bake-off (maestro-core T030),
 # not in use by search: a chunk set and a generation are built for each, and
 # the corpus's own questions decide. Both are Qwen's official GGUF files,
