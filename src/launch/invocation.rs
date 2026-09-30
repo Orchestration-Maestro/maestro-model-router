@@ -337,37 +337,46 @@ mod tests {
             .map(|argument| argument.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
 
-        for (flag, value) in [
-            ("--ctx-size", "32768"),
-            ("--jinja", ""),
-            ("--n-gpu-layers", "999"),
-            ("--fit", "on"),
-            ("--fit-target", "2048"),
-            ("--batch-size", "2048"),
-            ("--ubatch-size", "512"),
-            ("--parallel", "1"),
-            ("--cache-type-k", "q8_0"),
-            ("--cache-type-v", "q8_0"),
-            ("--flash-attn", "on"),
-            ("--kv-unified", ""),
-            ("--n-predict", "2048"),
-            ("--reasoning-format", "deepseek"),
-        ] {
-            assert!(
-                if value.is_empty() {
-                    line.iter().any(|argument| argument == flag)
-                } else {
-                    has_pair(&line, flag, value)
-                },
-                "the launch carries {flag} {value:?}:\\n{line:?}"
-            );
-        }
-        for absent in ["--model-draft", "--mmproj", "--chat-template-file"] {
-            assert!(
-                !line.iter().any(|argument| argument == absent),
-                "the launch does not override {absent}:\\n{line:?}"
-            );
-        }
+        assert_eq!(
+            line,
+            vec![
+                "--model",
+                &resolved("llm/google/gemma-4-e4b/gemma-4-E4B-it-Q4_K_M.gguf"),
+                "--ctx-size",
+                "32768",
+                "--batch-size",
+                "2048",
+                "--cache-type-k",
+                "q8_0",
+                "--cache-type-v",
+                "q8_0",
+                "--fit",
+                "on",
+                "--fit-target",
+                "2048",
+                "--flash-attn",
+                "on",
+                "--jinja",
+                "--kv-unified",
+                "--n-gpu-layers",
+                "999",
+                "--n-predict",
+                "2048",
+                "--parallel",
+                "1",
+                "--reasoning-format",
+                "deepseek",
+                "--ubatch-size",
+                "512",
+                "--alias",
+                "ask-gemma4-e4b-nonthinking",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8080",
+            ],
+            "the launch is exactly the frozen recipe:\n{line:?}"
+        );
     }
 
     #[test]
