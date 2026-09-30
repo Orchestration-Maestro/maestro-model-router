@@ -273,6 +273,25 @@ fn shipped() -> Catalog {
     })
 }
 
+#[test]
+fn the_m1_nonthinking_answer_entry_has_its_frozen_admission_settings() {
+    let catalog = shipped();
+    let answer = catalog
+        .entry("ask-gemma4-e4b-nonthinking")
+        .expect("M1 nonthinking answer model");
+
+    assert_eq!(
+        answer.path.as_str(),
+        "llm/google/gemma-4-e4b/gemma-4-E4B-it-Q4_K_M.gguf"
+    );
+    assert_eq!(answer.context_size, 32_768);
+    assert_eq!(answer.residency, Residency::OnDemand);
+    assert_eq!(answer.memory_estimate_mib, 8_843);
+    assert_eq!(answer.startup_timeout_seconds, 180);
+    assert_eq!(answer.draft_path, None);
+    assert_eq!(answer.projector_path, None);
+}
+
 /// Files deleted by the owner on 2026-09-28 must not remain routable.
 #[test]
 fn the_shipped_catalog_omits_deleted_models() {
