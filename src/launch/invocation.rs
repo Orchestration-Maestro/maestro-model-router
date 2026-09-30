@@ -107,7 +107,7 @@ fn long_form(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{RelativePath, Residency};
+    use crate::catalog::{Catalog, RelativePath, Residency};
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
@@ -323,6 +323,51 @@ mod tests {
             !line.iter().any(|argument| argument == "--no-fa"),
             "'on' is not falsehood:\n{line:?}"
         );
+    }
+
+    #[test]
+    fn the_m1_nonthinking_entry_launches_with_the_frozen_recipe() {
+        let catalog =
+            Catalog::parse(include_str!("../../catalog.toml")).expect("the shipped catalog parses");
+        let entry = catalog
+            .entry("ask-gemma4-e4b-nonthinking")
+            .expect("M1 nonthinking answer model");
+        let line = of(entry, Path::new(ROOT), PORT)
+            .iter()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        for (flag, value) in [
+            ("--ctx-size", "32768"),
+            ("--jinja", ""),
+            ("--n-gpu-layers", "999"),
+            ("--fit", "on"),
+            ("--fit-target", "2048"),
+            ("--batch-size", "2048"),
+            ("--ubatch-size", "512"),
+            ("--parallel", "1"),
+            ("--cache-type-k", "q8_0"),
+            ("--cache-type-v", "q8_0"),
+            ("--flash-attn", "on"),
+            ("--kv-unified", ""),
+            ("--n-predict", "2048"),
+            ("--reasoning-format", "deepseek"),
+        ] {
+            assert!(
+                if value.is_empty() {
+                    line.iter().any(|argument| argument == flag)
+                } else {
+                    has_pair(&line, flag, value)
+                },
+                "the launch carries {flag} {value:?}:\\n{line:?}"
+            );
+        }
+        for absent in ["--model-draft", "--mmproj", "--chat-template-file"] {
+            assert!(
+                !line.iter().any(|argument| argument == absent),
+                "the launch does not override {absent}:\\n{line:?}"
+            );
+        }
     }
 
     #[test]
