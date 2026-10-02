@@ -292,6 +292,38 @@ fn the_m1_nonthinking_answer_entry_has_its_frozen_admission_settings() {
     assert_eq!(answer.projector_path, None);
 }
 
+#[test]
+fn the_mxbai_reranker_uses_its_named_runtime_and_spike_settings() {
+    let catalog = shipped();
+    let reranker = catalog
+        .entry("mxbai-rerank-large-v2")
+        .expect("additive mxbai reranker entry");
+
+    assert_eq!(
+        reranker.path.as_str(),
+        "mixedbread-ai/mxbai-rerank-large-v2/mxbai-rerank-large-v2-F16.gguf"
+    );
+    assert_eq!(reranker.context_size, 8192);
+    assert_eq!(reranker.residency, Residency::OnDemand);
+    assert_eq!(reranker.memory_estimate_mib, 5120);
+    assert_eq!(reranker.runtime.as_deref(), Some("mxbai-master"));
+    assert_eq!(reranker.startup_timeout_seconds, 300);
+    assert!(!reranker.generates(), "raw-margin scoring, not generation");
+    for (flag, value) in [
+        ("reranking", "true"),
+        ("n-gpu-layers", "99"),
+        ("batch-size", "1024"),
+        ("ubatch-size", "1024"),
+        ("parallel", "1"),
+        ("flash-attn", "on"),
+        ("threads", "3"),
+        ("threads-batch", "3"),
+        ("no-warmup", "true"),
+    ] {
+        assert_eq!(reranker.flags.get(flag).map(String::as_str), Some(value));
+    }
+}
+
 /// Files deleted by the owner on 2026-09-28 must not remain routable.
 #[test]
 fn the_shipped_catalog_omits_deleted_models() {

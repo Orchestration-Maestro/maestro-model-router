@@ -810,6 +810,37 @@ fa = "on"
 np = "1"
 kv-unified = "true"
 
+# An additive challenger to the M1 reranker above, not a default switch.
+# mxbai-rerank-large-v2 needs the named patched llama.cpp 0c1e570 runtime:
+# Qwen2 loads an optional classifier head, and the converter emits the F32
+# difference of the "1" and "0" rows. Scores are raw signed logit margins,
+# not probabilities. The retained patch adds 35 lines across two files.
+#
+# F16 weights, converted and verified in the serving spike (2026-10-01):
+#   3093674688 bytes, sha256 c9bf6b8f136b43b64f80b52a191766b55bd057678cd3b2dd5d43c3139a284b15
+# Spike ranking agreement: top-1 12/12, median Spearman 0.9961,
+# minimum 0.9847, mean top-10 intersection 9.5/10. Whole-string tokenization
+# differs from the official segmented tokenizer; exact scores do not match.
+# Sampled global device delta was 4669 MiB on an RTX 5090, under contention.
+# The 5120 MiB estimate is the declared spike budget, not a worst-case peak.
+[models.mxbai-rerank-large-v2]
+path = "mixedbread-ai/mxbai-rerank-large-v2/mxbai-rerank-large-v2-F16.gguf"
+context_size = 8192
+residency = "on-demand"
+memory_estimate_mib = 5120
+runtime = "mxbai-master"
+
+[models.mxbai-rerank-large-v2.flags]
+reranking = "true"
+n-gpu-layers = "99"
+batch-size = "1024"
+ubatch-size = "1024"
+parallel = "1"
+flash-attn = "on"
+threads = "3"
+threads-batch = "3"
+no-warmup = "true"
+
 # Two challengers to `embed`, declared for the bake-off (maestro-core T030),
 # not in use by search: a chunk set and a generation are built for each, and
 # the corpus's own questions decide. Both are Qwen's official GGUF files,
