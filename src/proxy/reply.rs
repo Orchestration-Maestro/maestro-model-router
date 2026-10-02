@@ -284,24 +284,22 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_caller_that_finishes_sending_is_read_to_its_end() {
+    fn a_refused_caller_that_has_finished_sending_is_read_to_its_end() {
         // More than one read of the drain's buffer, and less than the bound,
         // so a drain that stopped after a read or two leaves bytes behind --
         // and a socket closed on unread bytes is the reset this exists to
         // prevent.
         let (router, mut caller) = connection();
-        let sending = thread::spawn(move || {
-            caller
-                .write_all(&vec![b'x'; 32 * 1024])
-                .expect("the rest of a request");
-            caller
-                .shutdown(Shutdown::Write)
-                .expect("the caller's side, ended");
-            caller
-        });
+        // Queue the bytes and their end before the drain starts: a sender
+        // scheduled after its deadline is not promised a complete drain.
+        caller
+            .write_all(&vec![b'x'; 32 * 1024])
+            .expect("the rest of a request");
+        caller
+            .shutdown(Shutdown::Write)
+            .expect("the caller's side, ended");
 
         linger(&router);
-        let _caller = sending.join().expect("the caller sent everything");
 
         router
             .set_nonblocking(true)
