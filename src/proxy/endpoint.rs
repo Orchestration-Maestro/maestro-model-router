@@ -82,10 +82,15 @@ impl Endpoint {
     /// a model with nothing after it.
     pub(super) fn of(path: &str) -> Result<Self, Refusal> {
         // Before the dedicated shape, which would otherwise read `/models/`
-        // as a model named nothing. A trailing slash is the same request
-        // either way: a client that adds one is not asking for something
-        // else.
-        let bare = path.trim_end_matches('/');
+        // as a model named nothing. A trailing slash or a query is the same
+        // request either way: a llama.cpp client refreshing its list sends
+        // `/models?reload=1` and `/props?model=<id>`, and a client library
+        // that pages its model list adds a query without being asked.
+        //
+        // shortcut: `/props?model=<id>` answers the router's own properties,
+        // not the child's, so a client learns no chat template from it;
+        // forward it to the child if a client ever needs that template.
+        let bare = path.split('?').next().unwrap_or(path).trim_end_matches('/');
         if bare == CATALOGUE {
             return Ok(Self::Catalogue);
         }
@@ -104,6 +109,11 @@ impl Endpoint {
         if bare == UNLOAD {
             return Ok(Self::Unload);
         }
+        // The listing sits inside the generic shape and is answered from the
+        // catalog rather than by a child, so it is taken here, before it.
+        if bare == LISTING {
+            return Ok(Self::Listing);
+        }
 
         if let Some(rest) = path.strip_prefix(DEDICATED) {
             return match rest.split_once('/') {
@@ -116,16 +126,6 @@ impl Endpoint {
                      is {DEDICATED}<model>/<path>"
                 ))),
             };
-        }
-
-        // Before the generic shape, because the listing sits inside it and is
-        // answered from the catalog rather than by a child. Trailing slashes
-        // and a query are the same request: a client that adds either is not
-        // asking for something else, and a client library that pages its
-        // model list adds a query without being asked.
-        let bare = path.split('?').next().unwrap_or(path);
-        if bare.trim_end_matches('/') == LISTING {
-            return Ok(Self::Listing);
         }
 
         if path.starts_with(GENERIC) {
@@ -230,6 +230,22 @@ mod tests {
                 Endpoint::of(path).expect("a listing"),
                 Endpoint::Listing,
                 "'{path}' lists the catalog, which needs no child"
+            );
+        }
+    }
+
+    #[test]
+    fn a_query_does_not_change_which_router_path_is_asked() {
+        for (path, endpoint) in [
+            ("/props?model=gemma3&autoload=false", Endpoint::Properties),
+            ("/models?reload=1", Endpoint::Catalogue),
+            ("/models/?reload=1", Endpoint::Catalogue),
+        ] {
+            assert_eq!(
+                Endpoint::of(path).expect("a router path"),
+                endpoint,
+                "'{path}' is what a llama.cpp client sends when it refreshes \
+                 its model list"
             );
         }
     }

@@ -450,7 +450,11 @@ spec-draft-p-min = "0"
 batch-size = "2048"
 ubatch-size = "512"
 split-mode = "none"
-load-mode = "mmap"
+# Direct reads, not mmap. On 2026-10-23, with four builds holding the page
+# cache, mmap faulted the 19.7 GB file in at about 60 MB/s and missed the
+# 300-second startup budget twice; dio read it past the cache and was ready
+# in 166 s on the same machine at the same moment.
+load-mode = "dio"
 image-min-tokens = "1024"
 reasoning-preserve = "true"
 
