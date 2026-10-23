@@ -431,6 +431,9 @@ context_size = 196608
 # the card, which is the whole of ADR 0003.
 memory_estimate_mib = 29184
 reasoning_format = "deepseek"
+# Direct reads took 161 s and then 282 s on 2026-10-23 while builds held the
+# page cache, too close to the shared 300 for a load that cannot be resumed.
+startup_timeout_seconds = 600
 
 [models.heretic38.flags]
 # Qwen's recommended sampling, as set out on qwen38.
