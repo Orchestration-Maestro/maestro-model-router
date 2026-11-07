@@ -453,9 +453,6 @@ version = "0.5.0"
 backend = "github:mizchi/similarity"
 specifiers = ["0.5.0"]
 
-[tools.similarity-rs.options]
-matching = "x86_64-unknown-linux-gnu"
-
 [tools.similarity-rs."platforms.linux-x64"]
 checksum = "sha256:2afda6201b6afb1ee36c1ce51b95a538ec99310c79f661905536d917470a406a"
 url = "https://github.com/mizchi/similarity/releases/download/v0.5.0/similarity-v0.5.0-x86_64-unknown-linux-gnu.tar.gz"
@@ -466,36 +463,48 @@ checksum = "sha256:2afda6201b6afb1ee36c1ce51b95a538ec99310c79f661905536d917470a4
 url = "https://github.com/mizchi/similarity/releases/download/v0.5.0/similarity-v0.5.0-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/mizchi/similarity/releases/assets/394121075"
 
+[tools.similarity-rs."platforms.macos-arm64"]
+checksum = "sha256:d5a6abcf915b87061857c23a1934883a99b93970a66c627cc8b7f3286c0ba916"
+url = "https://github.com/mizchi/similarity/releases/download/v0.5.0/similarity-v0.5.0-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/mizchi/similarity/releases/assets/394121076"
+
 [[tools.taplo]]
 version = "0.10.0"
 backend = "aqua:tamasfe/taplo"
 specifiers = ["0.10.0"]
 
 [tools.taplo."platforms.linux-arm64"]
+checksum = "sha256:033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aarch64.gz"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257322597"
 
 [tools.taplo."platforms.linux-arm64-musl"]
+checksum = "sha256:033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aarch64.gz"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257322597"
 
 [tools.taplo."platforms.linux-x64"]
+checksum = "sha256:8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257322600"
 
 [tools.taplo."platforms.linux-x64-musl"]
+checksum = "sha256:8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257322600"
 
 [tools.taplo."platforms.macos-arm64"]
+checksum = "sha256:713734314c3e71894b9e77513c5349835eefbd52908445a0d73b0c7dc469347d"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-aarch64.gz"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257323110"
 
 [tools.taplo."platforms.macos-x64"]
+checksum = "sha256:898122cde3a0b1cd1cbc2d52d3624f23338218c91b5ddb71518236a4c2c10ef2"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-x86_64.gz"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257323116"
 
 [tools.taplo."platforms.windows-x64"]
+checksum = "sha256:1615eed140039bd58e7089109883b1c434de5d6de8f64a993e6e8c80ca57bdf9"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-windows-x86_64.zip"
 url_api = "https://api.github.com/repos/tamasfe/taplo/releases/assets/257323062"
 

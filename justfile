@@ -1,17 +1,10 @@
 # Optional convenience task runner (https://just.systems).
 # Every command below works standalone -- just is never required.
-
-# Our runtime, ahead of whatever the ambient PATH carries. WSL appends the
-# Windows PATH by default, which put a broken `just` npm shim in front of the
-# real one once already. Recipes resolve tools from our own install first, so
-# an inherited PATH cannot decide which binary a check runs.
 #
-# Derived, never hardcoded: `home_directory()` resolves on Windows, macOS and
-# Linux alike, and the separator follows the OS rather than assuming Unix.
-path_sep := if os_family() == "windows" { ";" } else { ":" }
-cargo_bin := home_directory() / ".cargo" / "bin"
-local_bin := home_directory() / ".local" / "bin"
-export PATH := cargo_bin + path_sep + local_bin + path_sep + env('PATH')
+# Every tool these recipes run comes from `mise.toml`, on the `PATH` mise
+# supplies when it is enabled in the shell or a command is prefixed with
+# `mise exec --`. Nothing here puts a directory of its own in front of that
+# `PATH`: an unpinned executable would then win over the pinned one it shadows.
 
 # The service unit that runs the router, for the recipes that act on it.
 #
@@ -62,13 +55,14 @@ check:
     RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --workspace --no-deps --locked
     cargo nextest run --workspace --locked
 
-# Format in place, re-stage what it rewrote and lint, for the commit hook.
-# `check` is the whole of it and verifies instead of rewriting.
+# Format in place and lint, for the commit hook. `check` is the whole of it and
+# verifies instead of rewriting. A file formatting rewrites is left for its
+# author to stage: the hook fails while it differs, and a commit carries what
+# was staged rather than whatever a hook touched on its way.
 
-# Prepare a commit: format, stage and lint it.
+# Prepare a commit: format and lint it.
 pre-commit:
     cargo fmt --all -- --config style_edition=2024
-    git add --update
     cargo clippy --workspace --all-targets --locked -- -D warnings
 
 # Format in place. `check` only verifies.
@@ -80,7 +74,8 @@ fmt:
 # nothing else catches one. `CARGO_TARGET_DIR` is cleared because the tests run
 # the binaries they build: with one target directory shared across jobs, a test
 # would run another job's mutant, and the result would be wrong in both
-# directions.
+# directions. The tool's release ships x86_64 builds only, so `mise.toml` pins
+# it for Linux, where this runs.
 
 # Mutate every function; a surviving mutant fails.
 mutants jobs="4":

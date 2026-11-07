@@ -128,7 +128,7 @@ gh pr merge --squash --delete-branch
 ## What the gates will tell you
 
 Locally, `just setup` installs the hooks and every tool they run, pinned in
-`mise.toml`. The hooks format, re-stage and lint a commit, check its message,
+`mise.toml`. The hooks format and lint a commit, check its message,
 and look for a secret in it; the hand-maintained file-format checks beside them
 cover YAML, TOML, shell, Markdown and the workflows. `just check` runs
 formatting, Clippy with warnings denied on every target, the documentation and

@@ -16,7 +16,12 @@ check_targets = ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
 # caller may only raise the floor.
 coverage_min_lines = 90
 
-# Words that are data rather than misspellings: `FO` is the output-format
-# switch of Windows' tasklist, which the memory probe passes as
-# `tasklist /FI ... /FO CSV /NH`.
-spelling_words = ["FO"]
+# Every job that compiles installs the tools `mise.toml` pins before it runs, so
+# a test reaches the tools it runs instead of finding them missing on a runner.
+# Opted in here rather than left to the shared default, which is off.
+test_tools = true
+
+# Words that are data rather than misspellings: `FND` prefixes the engineering
+# rules' foundations, and `FO` is the output-format switch of Windows'
+# tasklist, which the memory probe passes as `tasklist /FI ... /FO CSV /NH`.
+spelling_words = ["FND", "FO"]

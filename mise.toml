@@ -21,6 +21,8 @@ gitleaks = "8.30.1"
 # The file-formatting hooks. Continuous integration owns formatting, spelling
 # and the source checks; these keep a change clean before it leaves the machine.
 yamlfmt = "0.21.0"
+# Taplo's release publishes no checksums file, so `mise.lock` records the digest
+# of each download itself; `mise install` refuses one that differs.
 taplo = "0.10.0"
 "aqua:mvdan/sh" = "3.14.1"
 rumdl = "0.2.77"
@@ -35,7 +37,14 @@ zizmor = "1.30.1"
 # Runs ordinary tests in isolated processes, as continuous integration does.
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
 # Finds functions whose syntax trees match; the duplication allowlist test fails
-# on a pair it does not list.
-similarity-rs = { version = "0.5.0", matching = "x86_64-unknown-linux-gnu", bin = "similarity-rs" }
-# Mutates a change; a surviving mutant fails the run.
-cargo-mutants = { version = "27.1.0", matching = "x86_64-unknown-linux-gnu" }
+# on a pair it does not list. Its release carries the Linux and the Apple arm64
+# builds, the hosts the tests run on, so the pin claims those two and no more.
+similarity-rs = { version = "0.5.0", os = [
+  "linux",
+  "macos",
+], bin = "similarity-rs" }
+# Mutates the whole crate; a surviving mutant fails the run. Its release carries
+# x86_64 builds only and `just mutants` runs on Linux, so the pin claims that.
+cargo-mutants = { version = "27.1.0", os = [
+  "linux",
+], matching = "x86_64-unknown-linux-gnu" }

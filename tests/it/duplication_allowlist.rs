@@ -281,15 +281,6 @@ const ACCEPTED: &[(&str, &str)] = &[
          test naming neither the shape-only check nor the fallback, which \
          fail for unrelated reasons.",
     ),
-    (
-        "pinned_tools <-> fetched_tools",
-        "Both read a configuration file line by line and report what they \
-         found, which is the whole of the shape. What they report does not \
-         overlap: one lists the names a table pins, the other the lines that \
-         make a hook fetch a tool of its own, one of them with no name to \
-         report at all. Merging them takes a per-format callback saying which \
-         lines count, for four readers in one test module.",
-    ),
 ];
 
 /// `path:lines function name <-> path:lines function name` -> `name <-> name`.

@@ -36,7 +36,7 @@ is not mapped here.
 | P-017 Premature optimisation | Review: a reviewer names the principle a change breaks |
 | P-018 Broken windows | Gate: Clippy with `-D warnings`, `todo`, `dbg_macro` and `unsafe_code` denied, rustdoc warnings and missing docs as errors, 90% line coverage |
 | ENF-001 No machine-named paths | Review: paths are derived at run time (AGENTS.md); no automated path check yet |
-| ENF-002 Every claimed platform is tested | CI: every pull request compiles and lints for macOS and Windows beside the Linux test run (`check_targets` in `.github/ci.toml`), the landing run tests macOS natively, and the weekly eviction sweep runs all three (`matrix.runner` in `.github/workflows/eviction-sweep.yml`) |
+| ENF-002 Every claimed platform is tested | CI: every pull request compiles and lints for macOS and Windows beside the Linux test run (`check_targets` in `.github/ci.toml`), each of those jobs installs the pins `mise.toml` declares for its host (`test_tools`), the landing run tests macOS natively, and the weekly eviction sweep runs all three (`matrix.runner` in `.github/workflows/eviction-sweep.yml`) |
 | ENF-003 English only | Review: prose and identifiers are English |
 | ENF-004 Conventional commits | Organization: the `commits-are-conventional` ruleset refuses any other title on the default branch |
 | ENF-005 Failing test first | Review: the new test is seen failing first; `just mutants` mutates the whole crate and a surviving mutant fails it |
@@ -46,7 +46,7 @@ is not mapped here.
 | ENF-009 Allowlists that cannot rot | Test: each `.cargo/mutants.toml` exclusion names its mutant and the reason, removed when the reason stops being true |
 | ENF-010 Configuration is the authority | Organization: its settings as code in `.github/org/`, checked weekly by `org-drift.yml` |
 | ENF-011 Instructions grant nothing | Organization: authority lives in rulesets, workflow `permissions:` and access control; no instruction file grants any |
-| ENF-012 Pinned inputs | Gate: `Cargo.lock` with `--locked`, actions pinned by SHA, tools pinned in `mise.toml` and installed by `just setup` |
+| ENF-012 Pinned inputs | Gate: `Cargo.lock` with `--locked`, actions pinned by SHA, tools pinned in `mise.toml`, checksummed in `mise.lock` and installed by `just setup` |
 | ENF-013 No secret in history | Organization: secret scanning with push protection and validity checks (`maestrolabs-baseline`); CI: gitleaks |
 | ENF-014 Multi-factor authentication | Organization: two-factor authentication is required of every member and outside collaborator |
 | C-001 Map every rule | These pages, kept current by review; the daily drift check reports a row not mapped yet |

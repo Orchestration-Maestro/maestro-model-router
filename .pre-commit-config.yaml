@@ -29,7 +29,7 @@ repos:
   - repo: local
     hooks:
       - id: workspace-check
-        name: Format, re-stage and check the crate
+        name: Format and check the crate
         language: system
         entry: just pre-commit
         pass_filenames: false
