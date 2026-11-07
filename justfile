@@ -17,7 +17,9 @@
 # cross-platform: they act on a running router, and all but `reload` on its
 # service, which on this machine is a systemd user unit. Every check above them
 # runs anywhere its tools are on the PATH; `just setup` provisions those tools
-# on Linux, macOS and Windows.
+# on Linux, macOS and Windows. Two are narrower: the duplication test inside
+# `just check` needs Linux or macOS, and `just mutants` needs Linux, because
+# `mise.toml` pins each of those two for the hosts its release builds for.
 unit := "model-router"
 
 # First in the file, deliberately: `just` with no arguments runs the first

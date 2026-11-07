@@ -660,8 +660,7 @@ that point closes the connection rather than pretending it can still answer.
 ## 🛠️ Local commands
 
 ```sh
-mise install      # once per clone: the tools every hook and recipe runs
-just setup        # install the pinned tools and the commit hooks
+just setup        # once per clone: the pinned tools and the commit hooks
 just check        # exactly what CI runs, run here
 just serving      # what the router is holding, before interrupting it
 just deploy       # build HEAD, install it, restart once nothing is in flight

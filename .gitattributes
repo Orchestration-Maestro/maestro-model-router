@@ -45,7 +45,7 @@ examples/** linguist-vendored=false
 # ---------------------------------------------------------- Release archives
 # `git archive` produces the source tarball. Development-only material has no
 # place in it; .editorconfig and .gitattributes do, because a checkout of that
-tarball is formatted the same way.
+# tarball is formatted the same way.
 .github/ISSUE_TEMPLATE/     export-ignore
 .github/PULL_REQUEST_TEMPLATE.md export-ignore
 .gitignore                 export-ignore

@@ -1,4 +1,4 @@
-//! The commit hooks run only tools this repository installs.
+//! The commit hooks add no tool of their own and call only defined recipes.
 //!
 //! `just setup` is the whole of a clone's preparation: it installs what
 //! `mise.toml` pins and then installs the hooks. A hook that fetches a tool of
@@ -197,7 +197,7 @@ fn undefined_recipes(hooks: &str, justfile: &str) -> Vec<String> {
 }
 
 #[test]
-fn hooks_run_only_tools_this_repository_installs() {
+fn hooks_add_no_tool_and_call_only_defined_recipes() {
     let root = repo_root();
     let hooks = read(&root.join(".pre-commit-config.yaml"));
     let justfile = read(&root.join("justfile"));
