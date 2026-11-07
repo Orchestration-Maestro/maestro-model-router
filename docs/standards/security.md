@@ -5,9 +5,9 @@ rules](https://github.com/Orchestration-Maestro/.github/blob/864d85597a833864cd8
 This page is its rule map (C-001): for every rule, what holds it here, or why it
 does not apply. A row may name a stricter local rule; none weakens one.
 
-`rust-gate rules` writes the rows from the golden rules of `.github@864d855` at
-every commit and keeps what each row says here. A rule added there arrives as
-"Not mapped yet", and the daily drift check reports it until it is mapped.
+Its rows come from the golden rules of `.github@864d855`; the page is kept
+current by review, and the organization's daily drift check reports a rule that
+is not mapped here.
 
 ## What this repository protects
 

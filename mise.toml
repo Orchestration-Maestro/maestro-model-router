@@ -1,0 +1,41 @@
+# The development toolbelt: every tool a commit hook or a recipe runs, at one
+# pinned version. mise installs them from prebuilt releases and refuses any
+# download whose checksum differs from mise.lock, so the two files together are
+# the pin. Rust comes from rust-toolchain.toml through rustup, never from here.
+
+[settings]
+lockfile = true
+
+[tool_alias]
+prek = "github:j178/prek"
+similarity-rs = "github:mizchi/similarity"
+
+[tools]
+# Runs the shared development recipes.
+just = "1.58.0"
+# Installs and runs the commit hooks.
+prek = "0.5.4"
+# Refuses a secret in the staged change before it is committed.
+gitleaks = "8.30.1"
+
+# The file-formatting hooks. Continuous integration owns formatting, spelling
+# and the source checks; these keep a change clean before it leaves the machine.
+yamlfmt = "0.21.0"
+taplo = "0.10.0"
+"aqua:mvdan/sh" = "3.14.1"
+rumdl = "0.2.77"
+lychee = "0.24.2"
+editorconfig-checker = "4.0.2"
+
+# The workflow hooks.
+actionlint = "1.7.12"
+shellcheck = "0.11.0"
+zizmor = "1.30.1"
+
+# Runs ordinary tests in isolated processes, as continuous integration does.
+"aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
+# Finds functions whose syntax trees match; the duplication allowlist test fails
+# on a pair it does not list.
+similarity-rs = { version = "0.5.0", matching = "x86_64-unknown-linux-gnu", bin = "similarity-rs" }
+# Mutates a change; a surviving mutant fails the run.
+cargo-mutants = { version = "27.1.0", matching = "x86_64-unknown-linux-gnu" }
