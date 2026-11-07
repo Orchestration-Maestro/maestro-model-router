@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::common::{has_extension, repo_root, sources};
+use crate::common::{has_extension, repo_root, sources, test_start};
 
 /// Python's governance bar uses 200. Rust needs more room for the same
 /// content -- closing braces, explicit types, match arms, derive attributes --
@@ -18,21 +18,9 @@ const MAX_MODULE_LINES: usize = 250;
 
 /// Lines before the first test module. Rust colocates unit tests with the code
 /// they cover; counting them would charge a module for being tested.
-///
-/// Any cfg naming `test` counts, not just the bare `#[cfg(test)]`. Matching the
-/// literal string would charge a module for a `#[cfg(all(test, unix))]` block --
-/// the gate doing the exact thing this comment says it must not.
 fn code_lines(path: &Path) -> usize {
     let text = fs::read_to_string(path).expect("read");
-    text.lines()
-        .position(|line| {
-            let line = line.trim_start();
-            line.starts_with("#[cfg(")
-                && line
-                    .split(|letter: char| !letter.is_alphanumeric() && letter != '_')
-                    .any(|tok| tok == "test")
-        })
-        .unwrap_or_else(|| text.lines().count())
+    test_start(&text).unwrap_or_else(|| text.lines().count())
 }
 
 #[test]

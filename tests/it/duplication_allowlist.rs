@@ -281,6 +281,37 @@ const ACCEPTED: &[(&str, &str)] = &[
          test naming neither the shape-only check nor the fallback, which \
          fail for unrelated reasons.",
     ),
+    (
+        "tree <-> group",
+        "The two halves of one recursion over a use tree: tree reads one \
+         branch, group reads the comma-separated branches inside braces and \
+         hands each back to tree. They match because each is a loop over \
+         tokens that stops on a closing token, and what they stop on and do \
+         per token is the whole of each. Merging them would put the brace \
+         case back inside the loop that calls it.",
+    ),
+    (
+        "seams <-> runner_seams",
+        "runner_seams is seams around one fixed crate, and delegates to it, \
+         the same relationship as optional and required above. Folding the \
+         crate into seams would make every other test spell out a crate it \
+         does not use.",
+    ),
+    (
+        "skipped_end <-> block_end",
+        "Both walk characters and return where a comment or literal ends, so \
+         both are a loop with a match. What they match on shares nothing: \
+         skipped_end tells which kind of text starts here, block_end counts \
+         the nesting of one kind. Merging them would put the nesting counter \
+         in the function that only classifies.",
+    ),
+    (
+        "module <-> landing",
+        "landing is module tried on shorter and shorter prefixes of a path, \
+         and delegates to it. The shared line is the lookup; folding the \
+         prefix loop into module would make every exact lookup say it wants \
+         the exact one.",
+    ),
 ];
 
 /// `path:lines function name <-> path:lines function name` -> `name <-> name`.

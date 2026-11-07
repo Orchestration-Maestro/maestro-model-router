@@ -94,6 +94,17 @@ process environment is `unsafe` in Rust 2024.
 **English only.** Prose and identifiers. `tests/it/english_only.rs` scans for
 Latin diacritics.
 
+**A test never waits on time, and a door offers what more than one module
+uses.** `tests/it/test_waits.rs` refuses a `sleep` in test code: wait for the
+condition instead. `tests/it/one_caller_seams.rs` refuses an item that a
+`mod.rs` door offers when exactly one module outside the door uses it and no
+module inside shares it: move it next to its caller.
+`tests/it/source_coverage.rs` fails when a Rust file, or a build target missing
+from `tests/it/rust_source/files.rs`, sits outside what the two read. A seam or
+an offset that has to stay is an `[[exception]]` in `maestro-quality.toml`,
+with its rule (`TST-001` or `ARC-005`), the file, the item and the reason. An
+exception that excuses nothing fails, so the list shrinks with the code.
+
 **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `ci:`, `build:`, `chore:`, `perf:`, `revert:`. An organisation ruleset refuses
 anything else on `main`, where a squash merge records the pull request title,

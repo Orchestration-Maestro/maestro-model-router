@@ -3,4 +3,4 @@
 
 mod repository;
 
-pub(crate) use repository::{has_extension, repo_root, sources};
+pub(crate) use repository::{has_extension, repo_root, sources, test_start};
