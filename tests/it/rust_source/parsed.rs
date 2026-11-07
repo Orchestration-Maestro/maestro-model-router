@@ -11,6 +11,8 @@ pub(crate) struct Child {
     pub(crate) name: String,
     /// Whether code outside the declaring module's parent can name it.
     pub(crate) offered: bool,
+    /// Whether the declaration stands in the file's test code.
+    pub(crate) tests: bool,
     /// The line of the declaration.
     pub(crate) line: usize,
 }
@@ -58,7 +60,7 @@ pub(crate) fn parse(source: &str) -> Parsed {
         index = match token.text.as_str() {
             "use" => import(&tokens, index, in_tests, &mut parsed.named),
             "mod" => {
-                declaration(&tokens, index, &mut parsed.children);
+                declaration(&tokens, index, in_tests, &mut parsed.children);
                 index + 1
             }
             _ => path(&tokens, index, in_tests, &mut parsed.named),
@@ -69,13 +71,14 @@ pub(crate) fn parse(source: &str) -> Parsed {
 }
 
 /// Record `mod name;` at `at`.
-fn declaration(tokens: &[Token], at: usize, children: &mut Vec<Child>) {
+fn declaration(tokens: &[Token], at: usize, in_tests: bool, children: &mut Vec<Child>) {
     if let (Some(name), Some(end)) = (tokens.get(at + 1), tokens.get(at + 2))
         && end.text == ";"
     {
         children.push(Child {
             name: name.text.clone(),
             offered: offered_before(tokens, at),
+            tests: in_tests,
             line: name.line,
         });
     }

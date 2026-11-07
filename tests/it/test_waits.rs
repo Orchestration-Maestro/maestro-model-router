@@ -4,11 +4,14 @@
 //! flaky on a loaded one. A test waits for the thing it is waiting for: see
 //! `support::poll`, which parks only between looks at a condition.
 //!
-//! The check reads test code, which is every file under `tests/` and the test
-//! module that closes a source file. A wait that is an offset rather than a
-//! wait is recorded in `maestro-quality.toml` as an exception, with its reason.
+//! The check reads test code, which is every file under `tests/` and every
+//! module declared under `#[cfg(test)]`. A wait that is an offset rather than
+//! a wait is recorded in `maestro-quality.toml` as an exception, with its
+//! reason.
 
-use crate::rust_source::{Exceptions, Finding, Sources, parse, repository, unsettled};
+use std::collections::BTreeSet;
+
+use crate::rust_source::{Exceptions, Finding, ROOTS, Sources, Tree, parse, repository, unsettled};
 
 /// The rule's identifier in `maestro-quality.toml`.
 const RULE: &str = "TST-001";
@@ -18,10 +21,11 @@ const CLOCKS: &[&str] = &["thread", "time", "task"];
 
 /// Every wait on time in the test code of `sources`.
 fn waits(sources: &Sources) -> Vec<Finding> {
+    let declared = test_modules(sources);
     let mut found = Vec::new();
     for (path, text) in sources {
         let parsed = parse(text);
-        let whole_file = path.starts_with("tests/");
+        let whole_file = path.starts_with("tests/") || declared.contains(path);
         for named in parsed
             .named
             .iter()
@@ -46,6 +50,18 @@ fn waits(sources: &Sources) -> Vec<Finding> {
         }
     }
     found
+}
+
+/// The files of `sources` that are test code in their whole: a module
+/// declared under `#[cfg(test)]`, such as one a source file only builds tests
+/// from, is test code from its first line.
+fn test_modules(sources: &Sources) -> BTreeSet<String> {
+    ROOTS
+        .iter()
+        .flat_map(|root| Tree::load(sources, root).modules)
+        .filter(|module| module.tests)
+        .map(|module| module.file)
+        .collect()
 }
 
 #[test]
@@ -124,6 +140,23 @@ fn a_sleep_named_only_in_a_comment_or_a_string_is_not_a_wait() {
          let raw = r#\"time::sleep\"#;\n    /* task::sleep */\n}\n",
     )]);
     assert_eq!(places(&sources), Vec::<String>::new());
+}
+
+#[test]
+fn a_sleep_in_a_module_declared_under_cfg_test_is_a_wait() {
+    let sources = files(&[
+        ("src/lib.rs", "mod gate;\n"),
+        ("src/gate/mod.rs", "mod open;\n#[cfg(test)]\nmod guests;\n"),
+        (
+            "src/gate/open.rs",
+            "fn open() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
+            "src/gate/guests.rs",
+            "fn guest() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+    ]);
+    assert_eq!(places(&sources), ["src/gate/guests.rs:2 guest"]);
 }
 
 #[test]

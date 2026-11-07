@@ -15,6 +15,9 @@ pub(crate) struct Module {
     pub(crate) path: Vec<String>,
     /// Its file, from the repository root.
     pub(crate) file: String,
+    /// Whether the module is test code in its whole: under `tests/`, or
+    /// declared by a module that is.
+    pub(crate) tests: bool,
     /// What the file declares and names.
     pub(crate) parsed: Parsed,
     /// What its code names, as absolute paths.
@@ -48,28 +51,28 @@ impl Tree {
     /// Read the modules below `root`, skipping a declared file that is absent.
     pub(crate) fn load(sources: &Sources, root: &str) -> Self {
         let mut modules = Vec::new();
-        let mut pending = vec![(Vec::new(), root.to_owned())];
-        while let Some((path, file)) = pending.pop() {
+        let mut pending = vec![(Vec::new(), root.to_owned(), root.starts_with("tests/"))];
+        while let Some((path, file, tests)) = pending.pop() {
             let Some(text) = sources.get(&file) else {
                 continue;
             };
             let parsed = parse(text);
             let directory = children_directory(&file, path.is_empty());
-            for child in &parsed.children {
+            let declared = parsed.children.iter().filter_map(|child| {
                 let flat = format!("{directory}/{}.rs", child.name);
                 let nested = format!("{directory}/{}/mod.rs", child.name);
                 let found = [flat, nested]
                     .into_iter()
-                    .find(|candidate| sources.contains_key(candidate));
-                if let Some(child_file) = found {
-                    let mut child_path = path.clone();
-                    child_path.push(child.name.clone());
-                    pending.push((child_path, child_file));
-                }
-            }
+                    .find(|candidate| sources.contains_key(candidate))?;
+                let mut child_path = path.clone();
+                child_path.push(child.name.clone());
+                Some((child_path, found, tests || child.tests))
+            });
+            pending.extend(declared);
             modules.push(Module {
                 path,
                 file,
+                tests,
                 parsed,
                 reads: Reads::default(),
             });
