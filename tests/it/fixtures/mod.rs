@@ -1,7 +1,8 @@
-//! Model files a test writes for itself.
+//! Files a test writes for itself.
 //!
-//! Shared by every test module that needs a model file with something inside
-//! it: `gguf` composes the bytes, `scratch` is where they are written.
+//! `gguf` composes a model file's bytes. `scratch` is the directory a test
+//! writes into, whatever it writes: these model files, and `support`'s models
+//! root and search path.
 
 mod gguf;
 mod scratch;
