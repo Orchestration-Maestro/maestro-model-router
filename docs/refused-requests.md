@@ -10,36 +10,35 @@ curl -i http://127.0.0.1:8080/not-an-endpoint
 ```
 
 The reply has status `404` and a JSON error whose `code` is `path_not_found`.
-Use the status and code to handle the failure; the message explains it to the
-reader.
+Handle the failure by its status and code; the message is for the reader.
 
 ## Reference
 
 A refusal comes before the router forwards anything to a model. It declares its
-body length and closes the connection after the reply.
+body length and closes the connection after the reply. The
+[README](../README.md) lists every cause with its status and code.
 
-The caller may still be sending a request the router has refused to read. To
-avoid discarding the reply through a connection reset, the router closes its
-write side first, then reads and drops the remaining request bytes. This drain
-is best effort. It stops at EOF, a read error, one mebibyte, or its one-second
-deadline checked between reads. A blocked read also has a one-second timeout.
-The router does not promise to consume the whole request after refusing it.
+### The rest of a refused request
 
-### Testing the drain
+The router often refuses before it has read the whole request: a head larger
+than 64 KiB, or a body larger than it takes. Closing a connection that still
+holds unread bytes resets it, and a client that receives the reset may discard
+the reply; a Windows client does. So the router closes its write side once the
+reply is written, which tells the caller the reply is complete, and then reads
+and drops what the caller sends after it. A caller that has already finished
+sending and closed its side is read to its end the same way.
 
-The drain loop takes a reader and an expiry predicate. Production supplies the
-caller socket and a monotonic deadline. Unit tests hold expiry fixed while
-reading to EOF, or supply the expiry event explicitly. Byte-bound and read-error
-cases use controlled input. None of these tests needs a sender to finish within
-a wall-clock window.
-
-The on-wire refusal test checks that an oversized request head receives `431`
-and that the reply ends cleanly rather than with a connection reset.
+The drain is best effort and bounded. It stops at the end of the request, at a
+read error, after one mebibyte, or after one second, and a single read waits at
+most one second. A caller that sends more than that is reset.
 
 ## Examples
 
-Run the drain cases and the on-wire refusal case:
+Send a head larger than the router reads:
 
 ```sh
-cargo nextest run -p maestro-model-router -E 'test(proxy::reply::tests::) | test(a_refused_request_ends_with_its_reply_rather_than_a_reset)'
+curl -i -H "X-Big: $(head -c 70000 /dev/zero | tr '\0' x)" http://127.0.0.1:8080/v1/models
 ```
+
+The reply has status `431` and `code` `request_head_too_large`, and the
+connection ends after it rather than with a reset.

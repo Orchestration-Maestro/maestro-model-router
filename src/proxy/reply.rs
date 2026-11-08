@@ -103,7 +103,8 @@ pub(super) fn refuse(stream: &TcpStream, refusal: &Refusal) -> io::Result<()> {
         head_only: false,
     }
     .write(stream)?;
-    linger(stream);
+    let deadline = Instant::now() + LINGER;
+    linger(stream, || Instant::now() >= deadline);
     Ok(())
 }
 
@@ -121,15 +122,17 @@ const LINGER_BYTES: usize = 1024 * 1024;
 /// discards the reply it had not read yet, so the 431 this router just wrote
 /// would arrive as nothing. The write side is closed first, which tells the
 /// caller the reply is complete, and what it is still sending is read and
-/// dropped for a bounded moment before the socket goes. Best effort: the
-/// reply is already written, and a caller that keeps sending past the bound
-/// is reset as before.
-fn linger(stream: &TcpStream) {
-    if stream.shutdown(Shutdown::Write).is_err() || stream.set_read_timeout(Some(LINGER)).is_err() {
+/// dropped until `expired` ends the moment, before the socket goes. Best
+/// effort: the reply is already written, and a caller that keeps sending past
+/// the bound is reset as before.
+fn linger(stream: &TcpStream, expired: impl FnMut() -> bool) {
+    // The timeout goes first: macOS refuses socket options once both
+    // directions are shut, and a caller that has sent its end may already
+    // have shut the reading one.
+    if stream.set_read_timeout(Some(LINGER)).is_err() || stream.shutdown(Shutdown::Write).is_err() {
         return;
     }
-    let deadline = Instant::now() + LINGER;
-    drain(stream, || Instant::now() >= deadline);
+    drain(stream, expired);
 }
 
 /// Drops remaining input until EOF, a read error, the byte bound or expiry.
@@ -295,16 +298,21 @@ mod tests {
         // and a socket closed on unread bytes is the reset this exists to
         // prevent.
         let (router, mut caller) = connection();
-        // Freeze expiry so the peer's EOF, not scheduling within a deadline,
-        // ends this drain.
         caller
             .write_all(&vec![b'x'; 32 * 1024])
             .expect("the rest of a request");
         caller
             .shutdown(Shutdown::Write)
             .expect("the caller's side, ended");
+        // On loopback a reply sent after the caller's end reaches the caller
+        // only once that end has reached the router: from here the router
+        // holds the whole request and its end, as it does when a caller
+        // finishes before its refusal. Expiry stays off, so that end, and no
+        // clock, stops the drain.
+        (&router).write_all(b"refused").expect("a reply");
+        caller.read_exact(&mut [0u8; 7]).expect("the reply, read");
 
-        drain(&router, || false);
+        linger(&router, || false);
 
         router
             .set_nonblocking(true)
