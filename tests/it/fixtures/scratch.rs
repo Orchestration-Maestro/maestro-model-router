@@ -23,6 +23,17 @@ pub(crate) struct Scratch {
 impl Scratch {
     /// Creates a directory no other live test holds.
     ///
+    /// # Panics
+    ///
+    /// As [`Self::made_at`] does.
+    #[must_use]
+    pub(crate) fn new(label: &str) -> Self {
+        Self::made_at(label, SystemTime::now())
+    }
+
+    /// [`Self::new`] with the clock read as `now`, so a test can make two
+    /// directories in the same instant.
+    ///
     /// The process id keeps test processes apart, and the count keeps this
     /// process's directories apart. Neither a thread id nor the clock can
     /// stand in for them: nextest runs every test on a thread with the same
@@ -36,13 +47,12 @@ impl Scratch {
     /// If the directory is already there or cannot be made. A test that took
     /// over a directory someone else made would read that test's files.
     #[must_use]
-    pub(crate) fn new(label: &str) -> Self {
+    pub(crate) fn made_at(label: &str, now: SystemTime) -> Self {
         let unique = format!(
             "model-router-{label}-{}-{}-{}",
             process::id(),
             MADE.fetch_add(1, Ordering::Relaxed),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
+            now.duration_since(UNIX_EPOCH)
                 .expect("a clock after 1970")
                 .as_nanos()
         );
