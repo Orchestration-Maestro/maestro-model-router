@@ -6,8 +6,9 @@
 //! the helpers are declared once below and the library is linked once.
 //!
 //! `support` drives real processes, `common` walks the repository for the
-//! prose and size gates, and `fixtures` writes synthetic model files; each
-//! test module names the one it needs through `crate::`.
+//! prose and size gates, `rust_source` reads Rust files for the conventions
+//! checks, and `fixtures` writes synthetic model files; each test module
+//! names the one it needs through `crate::`.
 //!
 //! The crate is marked `#![cfg(test)]`, which changes nothing about what is
 //! built: it only exists under `cargo test`. It tells Clippy what the compiler
@@ -20,6 +21,7 @@
 
 mod common;
 mod fixtures;
+mod rust_source;
 mod support;
 
 mod api_replies;
@@ -45,15 +47,19 @@ mod memory_budget;
 mod model_discovery;
 mod models_root;
 mod module_size;
+mod one_caller_seams;
 mod operator_control;
 mod prometheus_metrics;
 mod proxy_routing;
+mod quality_exceptions;
 mod request_queueing;
 mod resident_entries;
 mod router_mode;
 mod runtime_selection;
 mod scratch_directories;
 mod signalled_shutdown;
+mod source_coverage;
 mod stalled_callers;
 mod stream_timing;
 mod stub_server;
+mod test_waits;

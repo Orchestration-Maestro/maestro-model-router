@@ -51,3 +51,18 @@ pub(crate) fn has_extension(path: &Path, extensions: &[&str]) -> bool {
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extensions.contains(&extension))
 }
+
+/// The index of the first line that opens test code in a source file, if any.
+///
+/// Any cfg naming `test` counts, not just the bare `#[cfg(test)]`. Matching the
+/// literal string would charge a module for a `#[cfg(all(test, unix))]` block --
+/// the gate doing the exact thing the size gate says it must not.
+pub(crate) fn test_start(text: &str) -> Option<usize> {
+    text.lines().position(|line| {
+        let line = line.trim_start();
+        line.starts_with("#[cfg(")
+            && line
+                .split(|letter: char| !letter.is_alphanumeric() && letter != '_')
+                .any(|tok| tok == "test")
+    })
+}
