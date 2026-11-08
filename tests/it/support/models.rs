@@ -1,8 +1,10 @@
 //! What a router is given to serve: a models root and a catalog naming it.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, fs, thread};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::{env, fs, process};
+
+static NEXT_ROOT: AtomicU64 = AtomicU64::new(0);
 
 /// A models root with placeholder files in it, removed when the test ends.
 ///
@@ -23,12 +25,9 @@ impl ModelsRoot {
     #[must_use]
     pub(crate) fn with(files: &[&str]) -> Self {
         let unique = format!(
-            "model-router-{}-{:?}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("a clock after 1970")
-                .as_nanos(),
-            thread::current().id()
+            "model-router-{}-{}",
+            process::id(),
+            NEXT_ROOT.fetch_add(1, Ordering::Relaxed)
         );
         let root = env::temp_dir().join(unique);
         fs::create_dir_all(&root).expect("a writable temporary directory");
@@ -77,4 +76,17 @@ pub(crate) fn catalog_text(extra: &str) -> String {
          path = \"{MODEL}\"\n\
          {extra}"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ModelsRoot;
+
+    #[test]
+    fn model_roots_are_unique_within_a_process() {
+        let first = ModelsRoot::with(&[]);
+        let second = ModelsRoot::with(&[]);
+
+        assert_ne!(first.path(), second.path());
+    }
 }
