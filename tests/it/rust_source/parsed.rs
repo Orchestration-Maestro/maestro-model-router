@@ -107,18 +107,39 @@ fn test_attribute(tokens: &[Token], at: usize) -> bool {
     false
 }
 
-/// The index where the declaration at `at` starts, its visibility skipped so
-/// `#[cfg(test)] pub(crate) mod guests;` finds the attribute just as the bare
-/// form does.
+/// The index where the declaration at `at` starts, its visibility clause
+/// skipped: every form Rust allows — `pub`, `pub(crate)`, `pub(super)`,
+/// `pub(self)` and `pub(in crate::path)` — finds the attribute just as the
+/// bare form does.
 fn item_start(tokens: &[Token], at: usize) -> usize {
-    let mut start = at;
-    while let Some(before) = start.checked_sub(1).and_then(|index| tokens.get(index)) {
-        if !is_word(before) && !matches!(before.text.as_str(), "(" | ")") {
-            break;
-        }
-        start -= 1;
+    visibility_start(tokens, at).unwrap_or(at)
+}
+
+/// The index of the `pub` of the visibility clause attached to the item at
+/// `at`, if it has one.
+fn visibility_start(tokens: &[Token], at: usize) -> Option<usize> {
+    let before = at.checked_sub(1)?;
+    match tokens.get(before)?.text.as_str() {
+        "pub" => Some(before),
+        ")" => parentheses_start(tokens, before)
+            .and_then(|open| open.checked_sub(1))
+            .filter(|&keyword| tokens.get(keyword).is_some_and(|token| token.text == "pub")),
+        _ => None,
     }
-    start
+}
+
+/// The index of the `(` matching the `)` at `end`.
+fn parentheses_start(tokens: &[Token], end: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for index in (0..end).rev() {
+        match tokens.get(index)?.text.as_str() {
+            ")" => depth += 1,
+            "(" if depth > 0 => depth -= 1,
+            "(" => return Some(index),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The `[` opening the attribute that ends right before `end`, if one does.

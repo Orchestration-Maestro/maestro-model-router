@@ -144,23 +144,44 @@ fn a_sleep_named_only_in_a_comment_or_a_string_is_not_a_wait() {
 
 #[test]
 fn only_the_module_declared_under_cfg_test_is_test_code() {
+    // Every visibility Rust allows stands between the attribute and the `mod`,
+    // so each form has to find its own `#[cfg(test)]`.
     let sources = files(&[
         ("src/lib.rs", "mod gate;\n"),
         (
             "src/gate/mod.rs",
-            "mod open;\n#[cfg(test)]\npub(crate) mod guests;\n#[cfg(test)]\nmod helpers;\nmod room;\n",
+            "mod open;\n#[cfg(test)]\nmod bare;\n#[cfg(test)]\npub mod shared;\n\
+             #[cfg(test)]\npub(crate) mod guests;\n#[cfg(test)]\npub(super) mod carers;\n\
+             #[cfg(test)]\npub(self) mod selves;\n#[cfg(test)]\npub(in crate::gate) mod inner;\n\
+             mod room;\n",
         ),
         (
             "src/gate/open.rs",
             "fn open() {\n    std::thread::sleep(gap);\n}\n",
         ),
         (
+            "src/gate/bare.rs",
+            "fn bare() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
+            "src/gate/shared.rs",
+            "fn shared() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
             "src/gate/guests.rs",
             "fn guest() {\n    std::thread::sleep(gap);\n}\n",
         ),
         (
-            "src/gate/helpers.rs",
-            "fn helper() {\n    std::thread::sleep(gap);\n}\n",
+            "src/gate/carers.rs",
+            "fn carer() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
+            "src/gate/selves.rs",
+            "fn self_() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
+            "src/gate/inner.rs",
+            "fn inner() {\n    std::thread::sleep(gap);\n}\n",
         ),
         (
             "src/gate/room.rs",
@@ -169,7 +190,14 @@ fn only_the_module_declared_under_cfg_test_is_test_code() {
     ]);
     assert_eq!(
         places(&sources),
-        ["src/gate/guests.rs:2 guest", "src/gate/helpers.rs:2 helper"]
+        [
+            "src/gate/bare.rs:2 bare",
+            "src/gate/carers.rs:2 carer",
+            "src/gate/guests.rs:2 guest",
+            "src/gate/inner.rs:2 inner",
+            "src/gate/selves.rs:2 self_",
+            "src/gate/shared.rs:2 shared",
+        ]
     );
 }
 
