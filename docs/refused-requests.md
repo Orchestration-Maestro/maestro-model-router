@@ -14,23 +14,23 @@ Handle the failure by its status and code; the message is for the reader.
 
 ## Reference
 
-A refusal comes before the router forwards anything to a model. It declares its
-body length and closes the connection after the reply. The
+A refusal comes before the router forwards anything to a model. The reply
+declares its body length, and the router closes the connection after it. The
 [README](../README.md) lists every cause with its status and code.
 
 ### The rest of a refused request
 
 The router often refuses before it has read the whole request: a head larger
 than 64 KiB, or a body larger than it takes. Closing a connection that still
-holds unread bytes resets it, and a client that receives the reset may discard
-the reply; a Windows client does. So the router closes its write side once the
-reply is written, which tells the caller the reply is complete, and then reads
-and drops what the caller sends after it. A caller that has already finished
-sending and closed its side is read to its end the same way.
+holds unread bytes resets it. A client that receives the reset may discard the
+reply, and a Windows client does discard it. So the router closes its write side
+once the reply is written, which tells the caller the reply is complete, then
+reads and drops what the caller sends after it. The router reads to its end a
+caller that has already finished sending and closed its side.
 
 The drain is best effort and bounded. It stops at the end of the request, at a
 read error, after one mebibyte, or after one second, and a single read waits at
-most one second. A caller that sends more than that is reset.
+most one second. The router resets a caller that sends more than that.
 
 ## Examples
 

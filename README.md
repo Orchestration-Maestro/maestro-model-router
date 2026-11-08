@@ -628,8 +628,8 @@ The status and the `code` are fixed by the cause, so a program switches on
 those and never on prose; the `message` is for the reader and may be reworded.
 `type` is `invalid_request_error` for a `4xx` and `server_error` for a `5xx`.
 `Retry-After` is sent exactly when waiting changes the answer.
-A refusal written before the request was read to its end still reaches the
-caller; [Refused requests](docs/refused-requests.md) shows how.
+A refusal the router writes before it has read the whole request still reaches
+the caller. [Refused requests](docs/refused-requests.md) shows how.
 
 | Cause | Status | `code` |
 | --- | --- | --- |
