@@ -15,8 +15,8 @@ pub(crate) struct Module {
     pub(crate) path: Vec<String>,
     /// Its file, from the repository root.
     pub(crate) file: String,
-    /// Whether the module is test code in its whole: under `tests/`, or
-    /// declared by a module that is.
+    /// Whether the module is test code in its whole: under `tests/`, declared
+    /// by a module that is, or declared under a `#[cfg(..)]` naming `test`.
     pub(crate) tests: bool,
     /// What the file declares and names.
     pub(crate) parsed: Parsed,

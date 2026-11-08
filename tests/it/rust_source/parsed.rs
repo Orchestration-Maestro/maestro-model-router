@@ -11,7 +11,7 @@ pub(crate) struct Child {
     pub(crate) name: String,
     /// Whether code outside the declaring module's parent can name it.
     pub(crate) offered: bool,
-    /// Whether the declaration stands in the file's test code.
+    /// Whether the declaration attaches a `#[cfg(..)]` naming `test`.
     pub(crate) tests: bool,
     /// The line of the declaration.
     pub(crate) line: usize,
@@ -60,7 +60,7 @@ pub(crate) fn parse(source: &str) -> Parsed {
         index = match token.text.as_str() {
             "use" => import(&tokens, index, in_tests, &mut parsed.named),
             "mod" => {
-                declaration(&tokens, index, in_tests, &mut parsed.children);
+                declaration(&tokens, index, &mut parsed.children);
                 index + 1
             }
             _ => path(&tokens, index, in_tests, &mut parsed.named),
@@ -71,17 +71,60 @@ pub(crate) fn parse(source: &str) -> Parsed {
 }
 
 /// Record `mod name;` at `at`.
-fn declaration(tokens: &[Token], at: usize, in_tests: bool, children: &mut Vec<Child>) {
+fn declaration(tokens: &[Token], at: usize, children: &mut Vec<Child>) {
     if let (Some(name), Some(end)) = (tokens.get(at + 1), tokens.get(at + 2))
         && end.text == ";"
     {
         children.push(Child {
             name: name.text.clone(),
             offered: offered_before(tokens, at),
-            tests: in_tests,
+            tests: test_attribute(tokens, at),
             line: name.line,
         });
     }
+}
+
+/// Whether a `#[cfg(..)]` naming `test` stands among the attributes attached
+/// to the declaration at `at`.
+///
+/// The declaration's own attribute decides, not the file's first test marker:
+/// a `#[cfg(test)] mod guests;` may be followed by production modules that are
+/// not test code at all.
+fn test_attribute(tokens: &[Token], at: usize) -> bool {
+    let mut end = at;
+    while let Some(open) = attribute_start(tokens, end) {
+        let inside = tokens.get(open + 1..end - 1).unwrap_or_default();
+        if inside.first().is_some_and(|first| first.text == "cfg")
+            && inside.iter().any(|token| token.text == "test")
+        {
+            return true;
+        }
+        let Some(before) = open.checked_sub(1) else {
+            return false;
+        };
+        end = before;
+    }
+    false
+}
+
+/// The `[` opening the attribute that ends right before `end`, if one does.
+fn attribute_start(tokens: &[Token], end: usize) -> Option<usize> {
+    if end < 2 || tokens.get(end.checked_sub(1)?)?.text != "]" {
+        return None;
+    }
+    let mut depth = 0usize;
+    for index in (0..end - 1).rev() {
+        match tokens.get(index)?.text.as_str() {
+            "]" => depth += 1,
+            "[" if depth > 0 => depth -= 1,
+            "[" => {
+                let hash = index.checked_sub(1).and_then(|before| tokens.get(before));
+                return hash.filter(|token| token.text == "#").map(|_| index);
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether the visibility before the item at `at` reaches beyond the parent:

@@ -143,10 +143,13 @@ fn a_sleep_named_only_in_a_comment_or_a_string_is_not_a_wait() {
 }
 
 #[test]
-fn a_sleep_in_a_module_declared_under_cfg_test_is_a_wait() {
+fn only_the_module_declared_under_cfg_test_is_test_code() {
     let sources = files(&[
         ("src/lib.rs", "mod gate;\n"),
-        ("src/gate/mod.rs", "mod open;\n#[cfg(test)]\nmod guests;\n"),
+        (
+            "src/gate/mod.rs",
+            "mod open;\n#[cfg(test)]\nmod guests;\nmod room;\n",
+        ),
         (
             "src/gate/open.rs",
             "fn open() {\n    std::thread::sleep(gap);\n}\n",
@@ -154,6 +157,10 @@ fn a_sleep_in_a_module_declared_under_cfg_test_is_a_wait() {
         (
             "src/gate/guests.rs",
             "fn guest() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
+            "src/gate/room.rs",
+            "fn room() {\n    std::thread::sleep(gap);\n}\n",
         ),
     ]);
     assert_eq!(places(&sources), ["src/gate/guests.rs:2 guest"]);
