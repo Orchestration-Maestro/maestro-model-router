@@ -92,17 +92,20 @@ fn declaration(tokens: &[Token], at: usize, children: &mut Vec<Child>) {
 /// not test code at all.
 fn test_attribute(tokens: &[Token], at: usize) -> bool {
     let mut end = at;
-    while let Some(open) = attribute_start(tokens, end) {
+    while let Some(open) = bracket_start(tokens, end, "[", "]") {
+        // Only a bracket introduced by `#` is an attribute; anything else ends
+        // the run of attributes attached to the declaration.
+        let hash = open.checked_sub(1).and_then(|before| tokens.get(before));
+        if hash.is_none_or(|token| token.text != "#") {
+            return false;
+        }
         let inside = tokens.get(open + 1..end - 1).unwrap_or_default();
         if inside.first().is_some_and(|first| first.text == "cfg")
             && inside.iter().any(|token| token.text == "test")
         {
             return true;
         }
-        let Some(before) = open.checked_sub(1) else {
-            return false;
-        };
-        end = before;
+        end = open - 1;
     }
     false
 }
@@ -112,51 +115,55 @@ fn test_attribute(tokens: &[Token], at: usize) -> bool {
 /// `pub(self)` and `pub(in crate::path)` — finds the attribute just as the
 /// bare form does.
 fn item_start(tokens: &[Token], at: usize) -> usize {
-    visibility_start(tokens, at).unwrap_or(at)
+    visibility(tokens, at).map_or(at, |(keyword, _)| keyword)
 }
 
-/// The index of the `pub` of the visibility clause attached to the item at
-/// `at`, if it has one.
-fn visibility_start(tokens: &[Token], at: usize) -> Option<usize> {
+/// The visibility clause attached to the item at `at`: where its `pub` stands,
+/// and whether the clause reaches beyond the parent.
+fn visibility(tokens: &[Token], at: usize) -> Option<(usize, bool)> {
     let before = at.checked_sub(1)?;
-    match tokens.get(before)?.text.as_str() {
-        "pub" => Some(before),
-        ")" => parentheses_start(tokens, before)
-            .and_then(|open| open.checked_sub(1))
-            .filter(|&keyword| tokens.get(keyword).is_some_and(|token| token.text == "pub")),
-        _ => None,
+    let keyword = match tokens.get(before)?.text.as_str() {
+        "pub" => before,
+        ")" => bracket_start(tokens, before + 1, "(", ")")?.checked_sub(1)?,
+        _ => return None,
+    };
+    let keyword_is_pub = tokens.get(keyword).is_some_and(|token| token.text == "pub");
+    if !keyword_is_pub {
+        return None;
     }
+    // `pub(crate)` reaches beyond the parent; `pub(super)`, `pub(self)` and
+    // `pub(in ..)` do not, and neither does a clause naming any other path.
+    let argued = tokens
+        .get(keyword + 1)
+        .is_some_and(|token| token.text == "(");
+    let offered = !argued
+        || tokens
+            .get(keyword + 2)
+            .is_some_and(|name| name.text == "crate");
+    Some((keyword, offered))
 }
 
-/// The index of the `(` matching the `)` at `end`.
-fn parentheses_start(tokens: &[Token], end: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for index in (0..end).rev() {
-        match tokens.get(index)?.text.as_str() {
-            ")" => depth += 1,
-            "(" if depth > 0 => depth -= 1,
-            "(" => return Some(index),
-            _ => {}
-        }
-    }
-    None
-}
-
-/// The `[` opening the attribute that ends right before `end`, if one does.
-fn attribute_start(tokens: &[Token], end: usize) -> Option<usize> {
-    if end < 2 || tokens.get(end.checked_sub(1)?)?.text != "]" {
+/// The index of the bracket that opens the group closing right before `end`.
+///
+/// `end` is the position just past that closing bracket, and `open` and `close`
+/// are the pair to balance: a `[` and `]` for an attribute, a `(` and `)` for a
+/// visibility clause. A nested group of the same pair is crossed, so the `(` of
+/// `pub(in crate::x)` and the `[` of a `cfg(any(..))` are not mistaken for the
+/// opening one.
+fn bracket_start(tokens: &[Token], end: usize, open: &str, close: &str) -> Option<usize> {
+    if end < 2 || tokens.get(end - 1)?.text != close {
         return None;
     }
     let mut depth = 0usize;
     for index in (0..end - 1).rev() {
-        match tokens.get(index)?.text.as_str() {
-            "]" => depth += 1,
-            "[" if depth > 0 => depth -= 1,
-            "[" => {
-                let hash = index.checked_sub(1).and_then(|before| tokens.get(before));
-                return hash.filter(|token| token.text == "#").map(|_| index);
+        let text = tokens.get(index)?.text.as_str();
+        if text == close {
+            depth += 1;
+        } else if text == open {
+            if depth == 0 {
+                return Some(index);
             }
-            _ => {}
+            depth -= 1;
         }
     }
     None
@@ -165,16 +172,7 @@ fn attribute_start(tokens: &[Token], end: usize) -> Option<usize> {
 /// Whether the visibility before the item at `at` reaches beyond the parent:
 /// a bare `pub` or `pub(crate)`, not `pub(super)`, `pub(self)` or `pub(in ..)`.
 fn offered_before(tokens: &[Token], at: usize) -> bool {
-    let text = |back: usize| {
-        at.checked_sub(back)
-            .and_then(|index| tokens.get(index))
-            .map(|token| token.text.as_str())
-    };
-    match text(1) {
-        Some("pub") => true,
-        Some(")") => text(2) == Some("crate") && text(3) == Some("(") && text(4) == Some("pub"),
-        _ => false,
-    }
+    visibility(tokens, at).is_some_and(|(_, offered)| offered)
 }
 
 /// Record the path at `at` when it has two segments or more, and return the
