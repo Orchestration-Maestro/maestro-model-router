@@ -1,0 +1,27 @@
+# What this repository declares to the shared Rust CI.
+#
+# Everything not named here is the shared default: 16 Linux test shards, an 80%
+# coverage floor, and the full check set on merge groups and main pushes.
+
+# Nothing here builds for the browser. The router and its stub server are
+# native binaries, and a test crate is not a workspace member to lint for wasm.
+wasm_crates = []
+
+# The router answers on every platform it runs on, so the checks compile and
+# lint for the two that are not the runner's own: macOS runs the native tests
+# on merge groups and main pushes, Windows is a compile-and-lint leg.
+check_targets = ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
+
+# The shared floor is 80%; this repository held itself to 90% before, and a
+# caller may only raise the floor.
+coverage_min_lines = 90
+
+# Every job that compiles installs the tools `mise.toml` pins before it runs, so
+# a test reaches the tools it runs instead of finding them missing on a runner.
+# Opted in here rather than left to the shared default, which is off.
+test_tools = true
+
+# Words that are data rather than misspellings: `FND` prefixes the engineering
+# rules' foundations, and `FO` is the output-format switch of Windows'
+# tasklist, which the memory probe passes as `tasklist /FI ... /FO CSV /NH`.
+spelling_words = ["FND", "FO"]

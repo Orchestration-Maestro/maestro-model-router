@@ -19,7 +19,7 @@ sits idle.
 
 | Pillar | KPI | Current | Target | Measured by |
 | --- | --- | --- | --- | --- |
-| Speed | Duration of the required Rust CI on a pull request, p95 | not measured | under 5 minutes | The run time of `rust / Required Rust CI` |
-| Quality | Surviving mutants on a pull request's diff | 0 | 0 | rust-workflows' mutation testing on every pull request |
+| Speed | Duration of the shared Rust CI on a pull request, p95 | not measured | under 5 minutes | The run time of `Rust CI` |
+| Quality | Surviving mutants on the crate | not measured | 0 | `just mutants` |
 | Maintainability | Clippy warnings | 0 | 0 | `just check` and CI deny every warning |
 | Security | Open code scanning alerts | not measured | 0 | CodeQL and Clippy SARIF in code scanning |

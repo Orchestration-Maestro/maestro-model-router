@@ -1,15 +1,5 @@
-# The organization's quality rules as this repository shapes them: the inputs
-# its CI caller passes. Read by rust-gate sync.
-
-# The router claims Windows, macOS and Linux, so every pull request tests all
-# three; AGENTS.md says why the claim matters here.
-[ci]
-platforms = "macos windows"
-
-# FO, the output-format switch of Windows' tasklist, which the memory probe
-# runs as `tasklist /FI ... /FO CSV /NH`.
-[typos]
-words = ["FO"]
+# What the conventions checks excuse, and why: the only input that lets a
+# finding of `tests/it/one_caller_seams.rs` or `tests/it/test_waits.rs` stay.
 
 # ARC-005 finds an item that serves one caller. These stay seams, each for
 # the reason it gives.

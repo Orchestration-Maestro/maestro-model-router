@@ -30,9 +30,11 @@ thing that fails, and say what happens when it does.
 **It must behave the same on Windows, macOS and Linux.** Process semantics,
 path separators and signal handling all differ across them. Derive paths and
 resolve behaviour at run time rather than assuming the platform you are on.
-CI runs the tests on Linux, macOS and Windows on every pull request
-(`platforms` in `.github/workflows/ci.yml`), and that is the check that
-catches this.
+CI keeps the claim honest: every pull request compiles and lints for macOS
+and Windows beside the Linux run that tests (`check_targets` in
+`.github/ci.toml`), and the merge that lands them runs the tests on macOS
+too. The eviction sweep runs the whole matrix on all three weekly. That is
+the check that catches this.
 
 ---
 
@@ -124,13 +126,13 @@ is worse than no gate, because the repository still looks guarded.
 ## The shape of a change
 
 `main` takes changes only through a pull request. Direct pushes are refused by
-the platform, for the maintainer too. Install rustup and `rust-gate` first, as
+the platform, for the maintainer too. Install rustup and `mise` first, as
 [`README.md`](README.md) shows under its local commands.
 
 ```text
-rust-gate setup       # once per clone: the pinned toolbelt and the hooks
+just setup            # once per clone: the pinned tools and the commit hooks
 git switch -c <topic>
-just check            # exactly what CI runs; the pre-push hook runs it too
+just check            # exactly what CI runs, run here
 git push -u origin <topic>
 gh pr create --fill
 gh pr merge --squash --delete-branch
@@ -138,12 +140,19 @@ gh pr merge --squash --delete-branch
 
 ## What the gates will tell you
 
-Locally, hooks run formatting and lint at commit time and, before a push,
-`just check`: CI's checks job itself, `rust-gate ci --local`. In CI, `rust / Required Rust CI` from `rust-workflows` blocks the merge:
-formatting, Clippy, tests on three platforms, strict rustdoc, 90% line
-coverage, advisories, a secret scan, the declared Rust version, a
-reproducible release build and mutation testing of the change. The full
-eviction sweep runs weekly and reports.
+Locally, `just setup` installs the hooks and every tool they run, pinned in
+`mise.toml`. The hooks format and lint a commit, check its message,
+and look for a secret in it; the hand-maintained file-format checks beside them
+cover YAML, TOML, shell, Markdown and the workflows. `just check` runs
+formatting, Clippy with warnings denied on every target, the documentation and
+the tests, in the order continuous integration runs them.
+
+In CI, the shared Rust workflow blocks the merge: formatting, Clippy, tests on
+Linux with native tests on the macOS leg, a Windows compile-and-lint leg,
+strict rustdoc, the coverage floor this repository declares in
+`.github/ci.toml`, advisories, spelling, licences, a secret scan, the workflow
+audits and the declared Rust version. The full eviction sweep runs weekly and
+reports.
 
 `tests/it/duplication_allowlist.rs` uses an allowlist rather than a threshold.
 Adding an entry is expected; adding one without its reason is not, and a
