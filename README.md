@@ -420,8 +420,16 @@ curl --no-buffer http://127.0.0.1:8080/v1/chat/completions \
 
 The path is passed to the child unchanged, and `GET /v1/models` lists the
 catalog's entries without starting anything. `HEAD /v1/models` answers with
-the listing's headers and no body, and a query string on the listing is still
-the listing, because a client library that pages its model list adds one.
+the listing's headers and no body.
+
+The paths the router answers itself, which are `/props`, `/models`,
+`/v1/models`, `/metrics`, `/reload`, `/models/load` and `/models/unload`,
+ignore a query string and a trailing slash. A llama.cpp client refreshing its
+model list sends `/props?model=<id>&autoload=false` and `/models?reload=1`,
+and a client library that pages a model list adds a query without being asked.
+A `/props` that names a model answers the router's own properties, not that
+model's chat template or capabilities; forwarding it to the child is tracked
+in #70.
 
 Only `GET` and `POST` reach a child. The router answers a preflight
 (`OPTIONS`) itself and never starts a model for one: `204`, an `Allow` header,
