@@ -148,7 +148,7 @@ fn only_the_module_declared_under_cfg_test_is_test_code() {
         ("src/lib.rs", "mod gate;\n"),
         (
             "src/gate/mod.rs",
-            "mod open;\n#[cfg(test)]\nmod guests;\nmod room;\n",
+            "mod open;\n#[cfg(test)]\npub(crate) mod guests;\n#[cfg(test)]\nmod helpers;\nmod room;\n",
         ),
         (
             "src/gate/open.rs",
@@ -159,11 +159,18 @@ fn only_the_module_declared_under_cfg_test_is_test_code() {
             "fn guest() {\n    std::thread::sleep(gap);\n}\n",
         ),
         (
+            "src/gate/helpers.rs",
+            "fn helper() {\n    std::thread::sleep(gap);\n}\n",
+        ),
+        (
             "src/gate/room.rs",
             "fn room() {\n    std::thread::sleep(gap);\n}\n",
         ),
     ]);
-    assert_eq!(places(&sources), ["src/gate/guests.rs:2 guest"]);
+    assert_eq!(
+        places(&sources),
+        ["src/gate/guests.rs:2 guest", "src/gate/helpers.rs:2 helper"]
+    );
 }
 
 #[test]

@@ -78,7 +78,7 @@ fn declaration(tokens: &[Token], at: usize, children: &mut Vec<Child>) {
         children.push(Child {
             name: name.text.clone(),
             offered: offered_before(tokens, at),
-            tests: test_attribute(tokens, at),
+            tests: test_attribute(tokens, item_start(tokens, at)),
             line: name.line,
         });
     }
@@ -105,6 +105,20 @@ fn test_attribute(tokens: &[Token], at: usize) -> bool {
         end = before;
     }
     false
+}
+
+/// The index where the declaration at `at` starts, its visibility skipped so
+/// `#[cfg(test)] pub(crate) mod guests;` finds the attribute just as the bare
+/// form does.
+fn item_start(tokens: &[Token], at: usize) -> usize {
+    let mut start = at;
+    while let Some(before) = start.checked_sub(1).and_then(|index| tokens.get(index)) {
+        if !is_word(before) && !matches!(before.text.as_str(), "(" | ")") {
+            break;
+        }
+        start -= 1;
+    }
+    start
 }
 
 /// The `[` opening the attribute that ends right before `end`, if one does.
