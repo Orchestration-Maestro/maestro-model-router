@@ -7,8 +7,12 @@
 //! cheaper to keep than to merge, and the reason has to say why -- the one
 //! duplication that did not earn it, three gates walking the same tree, is
 //! factored into `tests/it/common/repository.rs` instead of listed here.
+//!
+//! A failed tool run fails the gate before its output is read as duplication
+//! pairs. The failure names `similarity-rs`, its exit status and its stderr.
 
 use std::collections::BTreeSet;
+use std::panic::catch_unwind;
 use std::process::Command;
 
 const THRESHOLD: &str = "0.85";
@@ -326,20 +330,64 @@ fn pair_name(line: &str) -> Option<String> {
     Some(format!("{} <-> {}", name(left)?, name(right)?))
 }
 
+/// Runs the duplication tool against the repository's sources and tests.
 fn detected() -> BTreeSet<String> {
-    let out = Command::new("similarity-rs")
-        .args(["--threshold", THRESHOLD, "src", "tests"])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect(
-            "similarity-rs must be installed: mise install installs it. \
-             A check that skips when its tool is missing reports green while \
-             looking at nothing.",
-        );
+    detected_with(
+        Command::new("similarity-rs")
+            .args(["--threshold", THRESHOLD, "src", "tests"])
+            .current_dir(env!("CARGO_MANIFEST_DIR")),
+    )
+}
+
+/// Reads the duplication pairs reported by this invocation of the tool.
+///
+/// # Panics
+///
+/// If the tool cannot run or exits unsuccessfully.
+fn detected_with(command: &mut Command) -> BTreeSet<String> {
+    let out = command.output().expect(
+        "similarity-rs must be installed: mise install installs it. \
+         A check that skips when its tool is missing reports green while \
+         looking at nothing.",
+    );
+    assert!(
+        out.status.success(),
+        "similarity-rs failed with {}; stderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(pair_name)
         .collect()
+}
+
+/// A failed tool cannot report a clean scan, even when both streams are empty.
+#[test]
+fn a_failed_tool_is_reported_instead_of_read_as_no_duplication() {
+    for (arguments, stderr) in [
+        (vec!["--never-bind"], ""),
+        (
+            vec!["--port", "invalid"],
+            "stub-llama-server: --port takes a number, not 'invalid'",
+        ),
+    ] {
+        let failure = catch_unwind(|| {
+            detected_with(Command::new(env!("CARGO_BIN_EXE_stub-llama-server")).args(&arguments))
+        })
+        .expect_err("a failed tool must fail the gate instead of returning an empty set");
+        let message = failure
+            .downcast_ref::<String>()
+            .expect("the failure describes the tool, status and stderr");
+        let status = if cfg!(windows) {
+            "exit code: 1"
+        } else {
+            "exit status: 1"
+        };
+        assert!(message.contains("similarity-rs"), "{message}");
+        assert!(message.contains(status), "{message}");
+        assert!(message.contains(&format!("stderr:\n{stderr}")), "{message}");
+    }
 }
 
 #[test]

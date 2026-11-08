@@ -43,7 +43,7 @@ is not mapped here.
 | ENF-006 Never weaken a gate | Organization: required checks and code scanning block every merge; a gate changes only in its own reviewed pull request |
 | ENF-007 Pull requests only | Organization: the `default-branch-discipline` ruleset (pull request, signed commits, code scanning) and `floor-no-destruction`, with no bypass actor |
 | ENF-008 Tiered checks | Commit hooks: a conventional title, a secret scan, the file-format checks, and `just pre-commit` formatting and linting the crate; `just check` runs formatting, Clippy, the documentation and the tests in CI's order; CI adds the other platforms, the coverage floor, advisories and the audits |
-| ENF-009 Allowlists that cannot rot | Test: each `.cargo/mutants.toml` exclusion names its mutant and the reason, removed when the reason stops being true |
+| ENF-009 Allowlists that cannot rot | Tests: the duplication allowlist refuses unrecorded and stale pairs; a failed `similarity-rs` run fails with its exit status and stderr before any pairs are read. Each `.cargo/mutants.toml` exclusion names its mutant and the reason, removed when the reason stops being true |
 | ENF-010 Configuration is the authority | Organization: its settings as code in `.github/org/`, checked weekly by `org-drift.yml` |
 | ENF-011 Instructions grant nothing | Organization: authority lives in rulesets, workflow `permissions:` and access control; no instruction file grants any |
 | ENF-012 Pinned inputs | Gate: `Cargo.lock` with `--locked`, actions pinned by SHA, tools pinned in `mise.toml`, checksummed in `mise.lock` and installed by `just setup` |
