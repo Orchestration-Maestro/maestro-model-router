@@ -225,7 +225,12 @@ mod tests {
 
     #[test]
     fn the_models_listing_is_answered_by_the_router_itself() {
-        for path in [LISTING, "/v1/models/", "/v1/models?limit=100"] {
+        for path in [
+            LISTING,
+            "/v1/models/",
+            "/v1/models?limit=100",
+            "/v1/models/?limit=100",
+        ] {
             assert_eq!(
                 Endpoint::of(path).expect("a listing"),
                 Endpoint::Listing,
@@ -238,6 +243,7 @@ mod tests {
     fn a_query_does_not_change_which_router_path_is_asked() {
         for (path, endpoint) in [
             ("/props?model=gemma3&autoload=false", Endpoint::Properties),
+            ("/props/?model=gemma3", Endpoint::Properties),
             ("/models?reload=1", Endpoint::Catalogue),
             ("/models/?reload=1", Endpoint::Catalogue),
         ] {
