@@ -52,6 +52,7 @@ mod request_queueing;
 mod resident_entries;
 mod router_mode;
 mod runtime_selection;
+mod scratch_directories;
 mod signalled_shutdown;
 mod stalled_callers;
 mod stream_timing;

@@ -187,11 +187,11 @@ move or remove a file.
 │       ├── common/                                                # Shared by the gates
 │       │   ├── mod.rs                                             # Shared by the gates
 │       │   └── repository.rs                                      # The repository's files, walked once for every gate that reads them
-│       ├── fixtures/                                              # Model files a test writes for itself
+│       ├── fixtures/                                              # Files a test writes for itself
 │       │   ├── catalog.toml                                       # Golden fixture: the four entries the design specification names, in the shape the parser must accept
 │       │   ├── gguf.rs                                            # Synthetic GGUF files, written in the format's own layout
-│       │   ├── mod.rs                                             # Model files a test writes for itself
-│       │   └── scratch.rs                                         # A scratch directory for a test that writes model files with bytes in them
+│       │   ├── mod.rs                                             # Files a test writes for itself
+│       │   └── scratch.rs                                         # A directory of a test's own, for the files it writes
 │       ├── proxy_routing/                                         # Routing both endpoints, through the interface a caller holds
 │       │   ├── body_framing.rs                                    # How a request body arrives: the length it declares, the leave it asks
 │       │   ├── child_lifecycle.rs                                 # What a caller sees of the child behind its request: one that cannot
@@ -235,6 +235,7 @@ move or remove a file.
 │       ├── resident_entries.rs                                    # Residency, driven through the router rather than through the policy
 │       ├── router_mode.rs                                         # The llama.cpp router-mode surface, which is what a llama.cpp client speaks
 │       ├── runtime_selection.rs                                   # Which build of the server an entry is served from
+│       ├── scratch_directories.rs                                 # The scratch directory, tested on its own
 │       ├── signalled_shutdown.rs                                  # A signalled router ends its children before it goes
 │       ├── stalled_callers.rs                                     # A caller that makes no progress is given up on
 │       ├── stream_timing.rs                                       # The three properties of the relay that are about time rather than content
