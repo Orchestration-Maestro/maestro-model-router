@@ -1,0 +1,26 @@
+# Clippy settings every target of this crate is read with, tests included.
+#
+# Most are the organization's Rust rules: at most 5 parameters, one boolean
+# among them, cognitive complexity 15 and nesting depth 4.
+#
+# Function length is the looser 100: the rule counts neither tests nor doc
+# comments, and Clippy cannot tell a test from a function. File length is held
+# by `tests/it/module_size.rs`, which does count code lines only.
+too-many-arguments-threshold = 5
+max-fn-params-bools = 1
+too-many-lines-threshold = 100
+cognitive-complexity-threshold = 15
+excessive-nesting-threshold = 4
+absolute-paths-max-segments = 2
+
+# `unwrap`, `expect` and `panic` are denied in production code, which is what
+# the crate lints in Cargo.toml say. A test asserts by failing, so the same
+# three are the tool it asserts with there: without these, a suite of 38 test
+# files is refused for the way it reports. Indexing a fixture's slice is the
+# same kind of assertion, and printing is how a test says what it saw.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = false

@@ -25,14 +25,13 @@ as records, not as instructions to start new work.
 
 ## Repository tree
 
-Every tracked file, with what it is for. `rust-gate guide` writes this tree at
-every commit and keeps each explanation already here, so improve an explanation
-in place.
+Every tracked file, with what it is for. Keep each explanation here as you add,
+move or remove a file.
 
 ```text
 .                                                                  # Repository root
 ├── .cargo/                                                        # Cargo settings for this workspace
-│   └── mutants.toml                                               # What cargo mutants leaves out when rust-workflows mutates a change
+│   └── mutants.toml                                               # What cargo mutants leaves out when it mutates the crate
 ├── .github/                                                       # GitHub metadata, templates and workflows
 │   ├── assets/                                                    # Images and other assets
 │   │   ├── CREDITS.md                                             # Banner credits
@@ -43,7 +42,8 @@ in place.
 │   │   ├── eviction-sweep.yml                                     # Eviction sweep
 │   │   └── scorecard.yml                                          # OpenSSF Scorecard
 │   ├── CODEOWNERS                                                 # Who reviews each path
-│   ├── copilot-instructions.md                                    # This guide, written by rust-gate guide at every commit
+│   ├── ci.toml                                                    # What this repository declares to the shared Rust CI: the target legs and the words that are data
+│   ├── copilot-instructions.md                                    # This guide
 │   └── dependabot.yml                                             # The organization merges only conventional titles: "ci(deps): bump ..."
 ├── docs/                                                          # Documentation
 │   ├── adr/                                                       # Architecture decision records
@@ -219,6 +219,7 @@ in place.
 │       ├── eviction_policy.rs                                     # What the router unloads to make room, and what it refuses to touch
 │       ├── free_room.rs                                           # Loading a model only into free room, when a request asks
 │       ├── gguf_metadata.rs                                       # What the router reads out of a model file
+│       ├── hook_tools.rs                                          # The commit hooks run only tools `just setup` installs
 │       ├── idle_unload.rs                                         # Idle unloading, driven through the router rather than through the policy
 │       ├── idle_window.rs                                         # The idle window, read from its variable
 │       ├── listen_addresses.rs                                    # Where the router listens, and what it refuses to listen on
@@ -250,10 +251,11 @@ in place.
 ├── LICENSE                                                        # The licence this repository is distributed under
 ├── README.md                                                      # maestro-model-router is Orchestration-Maestro's model router, and its command is model-router
 ├── catalog.toml                                                   # The models this router serves
+├── clippy.toml                                                    # The size limits and test allowances every Clippy run here reads
 ├── justfile                                                       # Optional convenience task runner (https://just.systems)
-├── maestro-quality.toml                                           # The organization's quality rules as this repository shapes them: the inputs its CI caller passes
-├── rust-toolchain.toml                                            # The pinned Rust toolchain
-└── typos.toml                                                     # The words this repository means, from [typos] words in maestro-quality.toml; rendered by rust-gate sync
+├── mise.lock                                                      # The checksum of every tool download, so a pin cannot move
+├── mise.toml                                                      # Every tool the hooks and the recipes run, at one pinned version
+└── rust-toolchain.toml                                            # The pinned Rust toolchain
 ```
 
 ## Change and verification procedure
@@ -261,9 +263,9 @@ in place.
 1. Read the rules in AGENTS.md that cover the files you change, and keep every
    gate intact: never weaken one to pass.
 2. Add an executable regression check for a change in behaviour.
-3. The commit hook `rust-gate guide` rewrites this guide when a file is added,
-   moved or removed; commit it with the change. The organization's daily drift
-   check reports a guide left stale.
+3. Keep this guide's tree current when a file is added, moved or removed; commit
+   it with the change. The organization's daily drift check reports a guide left
+   stale.
 4. Run `just check`, and report the commands you actually ran.
 5. Commits are signed, with a conventional title; the default branch takes only
    squash-merged pull requests.
