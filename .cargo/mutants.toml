@@ -1,6 +1,6 @@
-# What `cargo mutants` leaves out when rust-workflows mutates a change.
+# What `cargo mutants` leaves out when it mutates the crate.
 #
-# Each entry is one mutant no test can catch on Linux, where the gate runs,
+# Each entry is one mutant no test can catch on Linux, where the tests run,
 # and the reason. Remove an entry when its reason stops being true.
 
 exclude_re = [

@@ -301,8 +301,8 @@ fn detected() -> BTreeSet<String> {
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect(
-            "similarity-rs must be installed: rust-gate setup installs it. \
-             A gate that skips when its tool is missing reports green while \
+            "similarity-rs must be installed: mise install installs it. \
+             A check that skips when its tool is missing reports green while \
              looking at nothing.",
         );
     String::from_utf8_lossy(&out.stdout)
