@@ -28,9 +28,11 @@ once the reply is written, which tells the caller the reply is complete, then
 reads and drops what the caller sends after it. The router reads to its end a
 caller that has already finished sending and closed its side.
 
-The drain is best effort and bounded. It stops at the end of the request, at a
-read error, after one mebibyte, or after one second, and a single read waits at
-most one second. The router resets a caller that sends more than that.
+The drain is best effort and bounded. The router checks both limits between
+reads, not inside one: it stops at the end of the request, at a read error, once
+it has drained a mebibyte, or once its second has passed. A single read waits at
+most one second, so a drain can run up to two seconds before it stops. The
+router resets a caller that sends more than that.
 
 ## Examples
 
