@@ -9,36 +9,34 @@
 //! Unix only: the search path is built from symlinks, and the signal is sent
 //! through `kill`.
 
+use std::env;
 use std::env::consts::EXE_SUFFIX;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read};
 use std::net::SocketAddr;
 use std::os::unix::fs::symlink;
-use std::path::{Path, PathBuf};
-use std::process::{self, Child, ChildStdout, Command, ExitStatus, Stdio};
+use std::path::Path;
+use std::process::{Child, ChildStdout, Command, ExitStatus, Stdio};
 use std::time::Duration;
-use std::{env, fs, thread};
 
 use super::models::ModelsRoot;
 use super::poll::polled;
 use super::stub::stub_binary;
+use crate::fixtures::Scratch;
 
 /// A search path whose `llama-server` is the stub, so the binary under test
 /// finds a child the way it does in the field: by name, on `PATH`.
 pub(crate) struct SearchPath {
-    directory: PathBuf,
+    directory: Scratch,
 }
 
 impl SearchPath {
     /// A directory carrying the stub as `llama-server`.
     pub(crate) fn with_stub() -> Self {
-        let directory = env::temp_dir().join(format!(
-            "model-router-path-{}-{:?}",
-            process::id(),
-            thread::current().id()
-        ));
-        fs::create_dir_all(&directory).expect("a writable temporary directory");
-        Self { directory }.linking("llama-server")
+        Self {
+            directory: Scratch::new("path"),
+        }
+        .linking("llama-server")
     }
 
     /// Also carries the stub as `llama-server-<runtime>`, the name a catalog
@@ -53,24 +51,18 @@ impl SearchPath {
         // is that no file name assumes a platform, and a rule with an
         // exception is a rule that gets copied without it.
         let file = format!("{name}{EXE_SUFFIX}");
-        symlink(stub_binary(), self.directory.join(file))
+        symlink(stub_binary(), self.directory.path().join(file))
             .expect("a symlink in the temporary directory");
         self
     }
 
     /// The current search path with this directory in front of it.
     pub(crate) fn value(&self) -> OsString {
-        let mut paths = vec![self.directory.clone()];
+        let mut paths = vec![self.directory.path().to_path_buf()];
         if let Some(inherited) = env::var_os("PATH") {
             paths.extend(env::split_paths(&inherited));
         }
         env::join_paths(paths).expect("a search path with no separator in it")
-    }
-}
-
-impl Drop for SearchPath {
-    fn drop(&mut self) {
-        drop(fs::remove_dir_all(&self.directory));
     }
 }
 

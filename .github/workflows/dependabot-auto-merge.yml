@@ -12,11 +12,12 @@ jobs:
     name: Queue patch and minor updates to merge
     # Dependabot's own pull requests, on runs Dependabot started: only those
     # read Dependabot secrets. A person's push to Dependabot's branch starts a
-    # run without them, which could not mint the token; it is skipped. The
-    # author decides trust; the actor check only narrows it, so zizmor's
-    # bot-conditions concern, an actor check standing alone, does not apply.
-    # The required checks still decide whether the queued merge happens.
-    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}  # zizmor: ignore[bot-conditions] narrows the author check
+    # run without them, which could not mint the token; it is skipped. Both
+    # halves read the event itself, the author who opened the pull request and
+    # the sender who started this run, rather than the actor context, which a
+    # commit can attribute to someone else. The required checks still decide
+    # whether the queued merge happens.
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

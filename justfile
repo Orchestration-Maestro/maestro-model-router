@@ -1,25 +1,10 @@
 # Optional convenience task runner (https://just.systems).
 # Every command below works standalone -- just is never required.
-
-# Our runtime, ahead of whatever the ambient PATH carries. WSL appends the
-# Windows PATH by default, which put a broken `just` npm shim in front of the
-# real one once already. Recipes resolve tools from our own install first, so
-# an inherited PATH cannot decide which binary a gate runs.
 #
-# The pinned toolbelt goes first of all: `rust-gate setup` links every tool
-# rust-workflows pins into one per-user directory, so a gate runs the release
-# the gate verified rather than whichever copy an earlier install left in
-# ~/.cargo/bin.
-#
-# Derived, never hardcoded: `home_directory()` resolves on Windows, macOS and
-# Linux alike, and the separator follows the OS rather than assuming Unix.
-path_sep := if os_family() == "windows" { ";" } else { ":" }
-unix_cache := env("XDG_CACHE_HOME", home_directory() / ".cache")
-cache_home := if os_family() == "windows" { env("LOCALAPPDATA") } else { unix_cache }
-tools_bin := cache_home / "maestro" / "tools" / "bin"
-cargo_bin := home_directory() / ".cargo" / "bin"
-local_bin := home_directory() / ".local" / "bin"
-export PATH := tools_bin + path_sep + cargo_bin + path_sep + local_bin + path_sep + env('PATH')
+# Every tool these recipes run comes from `mise.toml`, on the `PATH` mise
+# supplies when it is enabled in the shell or a command is prefixed with
+# `mise exec --`. Nothing here puts a directory of its own in front of that
+# `PATH`: an unpinned executable would then win over the pinned one it shadows.
 
 # The service unit that runs the router, for the recipes that act on it.
 #
@@ -30,14 +15,16 @@ export PATH := tools_bin + path_sep + cargo_bin + path_sep + local_bin + path_se
 #
 # `reload`, `serving` and `deploy` are the recipes in this file that are not
 # cross-platform: they act on a running router, and all but `reload` on its
-# service, which on this machine is a systemd user unit. Every gate above them
-# runs anywhere its tools are on the PATH; `rust-gate setup` provisions those
-# tools on Linux, macOS and Windows.
+# service, which on this machine is a systemd user unit. Every check above them
+# runs anywhere its tools are on the PATH; `just setup` provisions those tools
+# on Linux, macOS and Windows. Two are narrower: the duplication test inside
+# `just check` needs Linux or macOS, and `just mutants` needs Linux, because
+# `mise.toml` pins each of those two for the hosts its release builds for.
 unit := "model-router"
 
 # First in the file, deliberately: `just` with no arguments runs the first
-# recipe, and before this that was `install`, which installs a toolchain. A
-# reader typing `just` to find out what is here should not get one for asking.
+# recipe, and a reader typing it to find out what is here should get the list,
+# not an install.
 #
 # `--list` reads the last comment line above a recipe as its description, so
 # in this file the reasoning goes above and the summary goes immediately
@@ -47,51 +34,61 @@ unit := "model-router"
 help:
     @just --list --unsorted
 
-# Rust alone. The gate tools are the pinned toolbelt, which `rust-gate setup`
-# installs: a tool fetched here at whatever version was newest is the unpinned
-# input the gate's pins exist to remove.
+# Every tool a hook or a recipe runs is pinned in mise.toml, and the commit
+# hooks are installed from .pre-commit-config.yaml. Both are per clone.
 
-# Install the Rust toolchain this repository needs. Idempotent.
-install:
-    rustup toolchain install --profile minimal 1.98.1
-    rustup component add clippy rustfmt llvm-tools-preview
+# Install the pinned tools and the commit hooks. Idempotent.
+setup:
+    mise install
+    mise exec -- prek install
 
-# One check, the one CI runs: `rust-gate ci --local` runs the checks job of
-# rust-workflows' CI step by step, in its order and in a runner's environment,
-# over the commits a push sends, so CI confirms what a push already passed
-# rather than discovering it. A step only GitHub can run, the other platforms
-# and the uploads among them, says it is not applied locally and why. The
-# pre-push hook runs the same command.
+# The four checks continuous integration runs on a pull request, in its order:
+# formatting, Clippy with warnings denied on every target, the documentation
+# with every public item required, and the tests.
 #
-# The gate itself comes from `cargo install`, at rust-workflows' latest release;
-# every tool it runs comes from the toolbelt `rust-gate setup` installs.
+# Advisories, coverage, the spelling and licence checks and the other two
+# platforms stay with the shared workflow: they need its pinned tools and its
+# runners, and a local copy that drifts is worse than none.
 
 # Run the checks CI runs.
 check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v rust-gate >/dev/null ||
-      { echo "Missing rust-gate; install it, then run rust-gate setup" >&2; exit 1; }
-    rust-gate ci --local
+    cargo fmt --all --check -- --config style_edition=2024
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --workspace --no-deps --locked
+    cargo nextest run --workspace --locked
+
+# Format in place and lint, for the commit hook. `check` is the whole of it and
+# verifies instead of rewriting. A file formatting rewrites is left for its
+# author to stage: the hook fails while it differs, and a commit carries what
+# was staged rather than whatever a hook touched on its way.
+
+# Prepare a commit: format and lint it.
+pre-commit:
+    cargo fmt --all -- --config style_edition=2024
+    cargo clippy --workspace --all-targets --locked -- -D warnings
 
 # Format in place. `check` only verifies.
 fmt:
     cargo fmt --all -- --config style_edition=2024
 
-# CI mutates only a pull request's diff; this mutates the whole crate, and runs
-# for hours. `CARGO_TARGET_DIR` is cleared because the tests run the binaries
-# they build: with one target directory shared across jobs, a test would run
-# another job's mutant, and the result would be wrong in both directions.
+# Mutation testing of the whole crate: it runs for hours, and a surviving
+# mutant fails the run. Continuous integration does not mutate a change, so
+# nothing else catches one. `CARGO_TARGET_DIR` is cleared because the tests run
+# the binaries they build: with one target directory shared across jobs, a test
+# would run another job's mutant, and the result would be wrong in both
+# directions. The tool's release ships x86_64 builds only, so `mise.toml` pins
+# it for Linux, where this runs.
 
 # Mutate every function; a surviving mutant fails.
 mutants jobs="4":
     env -u CARGO_TARGET_DIR cargo mutants --jobs {{ jobs }} --cargo-arg=--locked
 
-# Prove the gates do not depend on the ambient PATH.
+# Prove the hooks and the checks do not depend on the ambient PATH.
 doctor:
     @echo "just    $(command -v just)"
     @echo "cargo   $(command -v cargo)"
     @echo "prek    $(command -v prek)"
+    @echo "gitleaks $(command -v gitleaks)"
     @echo "rustc   $(rustc --version)"
 
 # `POST /reload` rather than a restart: the router reads the catalog file

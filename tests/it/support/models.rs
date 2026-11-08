@@ -1,16 +1,17 @@
 //! What a router is given to serve: a models root and a catalog naming it.
 
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, fs, thread};
+use std::fs;
+use std::path::Path;
+
+use crate::fixtures::Scratch;
 
 /// A models root with placeholder files in it, removed when the test ends.
 ///
-/// Under the system temporary directory, which the estate's path rule allows
-/// because it names a platform rather than a machine. The files are empty:
-/// nothing in this slice reads a model, it only checks that one is there.
+/// A scratch directory of the test's own, so no other test's model is in it.
+/// The files are empty: nothing in this slice reads a model, it only checks
+/// that one is there.
 pub(crate) struct ModelsRoot {
-    root: PathBuf,
+    root: Scratch,
 }
 
 impl ModelsRoot {
@@ -22,18 +23,9 @@ impl ModelsRoot {
     /// machine rather than a failing test.
     #[must_use]
     pub(crate) fn with(files: &[&str]) -> Self {
-        let unique = format!(
-            "model-router-{}-{:?}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("a clock after 1970")
-                .as_nanos(),
-            thread::current().id()
-        );
-        let root = env::temp_dir().join(unique);
-        fs::create_dir_all(&root).expect("a writable temporary directory");
+        let root = Scratch::new("models");
         for file in files {
-            let path = root.join(file);
+            let path = root.path().join(file);
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).expect("a writable temporary directory");
             }
@@ -44,13 +36,7 @@ impl ModelsRoot {
 
     #[must_use]
     pub(crate) fn path(&self) -> &Path {
-        &self.root
-    }
-}
-
-impl Drop for ModelsRoot {
-    fn drop(&mut self) {
-        drop(fs::remove_dir_all(&self.root));
+        self.root.path()
     }
 }
 

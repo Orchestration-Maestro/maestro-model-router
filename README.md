@@ -12,13 +12,12 @@
   <img src="https://img.shields.io/badge/Rust-2024-CE422B?style=for-the-badge&amp;logo=rust&amp;logoColor=white" alt="Rust 2024" />
   <img src="https://img.shields.io/badge/Serves-llama.cpp-334155?style=for-the-badge" alt="Supervises llama.cpp's llama-server" />
   <img src="https://img.shields.io/badge/API-OpenAI--compatible-334155?style=for-the-badge" alt="OpenAI-compatible endpoints" />
-  <img src="https://img.shields.io/badge/Tests-Linux%20%7C%20macOS%20%7C%20Windows-334155?style=for-the-badge&amp;logo=githubactions&amp;logoColor=white" alt="Every pull request tests Linux, macOS and Windows" />
+  <img src="https://img.shields.io/badge/Checks-Linux%20%7C%20macOS%20%7C%20Windows-334155?style=for-the-badge&amp;logo=githubactions&amp;logoColor=white" alt="Every pull request checks Linux, macOS and Windows" />
 </p>
 
 <p align="center">
   <a href="https://github.com/Orchestration-Maestro/maestro-model-router/actions/workflows/ci.yml"><img src="https://github.com/Orchestration-Maestro/maestro-model-router/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/Orchestration-Maestro/maestro-model-router"><img src="https://api.scorecard.dev/projects/github.com/Orchestration-Maestro/maestro-model-router/badge" alt="OpenSSF Scorecard" /></a>
-  <a href="https://codecov.io/gh/Orchestration-Maestro/maestro-model-router"><img src="https://codecov.io/gh/Orchestration-Maestro/maestro-model-router/graph/badge.svg" alt="Codecov line coverage" /></a>
 </p>
 
 maestro-model-router is Orchestration-Maestro's model router, and its command
@@ -629,6 +628,8 @@ The status and the `code` are fixed by the cause, so a program switches on
 those and never on prose; the `message` is for the reader and may be reworded.
 `type` is `invalid_request_error` for a `4xx` and `server_error` for a `5xx`.
 `Retry-After` is sent exactly when waiting changes the answer.
+A refusal the router writes before it has read the whole request still reaches
+the caller. [Refused requests](docs/refused-requests.md) shows how.
 
 | Cause | Status | `code` |
 | --- | --- | --- |
@@ -661,26 +662,22 @@ that point closes the connection rather than pretending it can still answer.
 ## 🛠️ Local commands
 
 ```sh
-cargo install --locked --git https://github.com/Orchestration-Maestro/rust-workflows \
-  --tag vX.Y.Z rust-gate   # the latest release's tag
-rust-gate setup   # once per clone: the pinned toolbelt and the hooks
-just check        # exactly what CI runs, run here; the pre-push hook runs it
+just setup        # once per clone: the pinned tools and the commit hooks
+just check        # exactly what CI runs, run here
 just serving      # what the router is holding, before interrupting it
 just deploy       # build HEAD, install it, restart once nothing is in flight
 ```
 
-`just` alone lists every recipe, with what it does. Rust itself comes from
-rustup. Every tool a gate runs is pinned by rust-workflows, which checks the
-checksum of each download, so the gates run the same releases here as in CI:
-`rust-gate setup` installs them into one per-user directory the justfile puts
-on its PATH
-([details](https://github.com/Orchestration-Maestro/rust-workflows/blob/main/docs/ci.md#the-tools-on-your-machine)).
-Install the gate from the
-[latest rust-workflows release](https://github.com/Orchestration-Maestro/rust-workflows/releases/latest).
-`just check` is `rust-gate ci --local`: the steps of CI's checks job, in its
-order and environment, over the commits a push sends, so CI confirms what a
-push already passed
-([details](https://github.com/Orchestration-Maestro/rust-workflows/blob/main/docs/ci.md#run-ci-before-you-push)).
+Install `mise` and `rustup` first. Enable mise in your shell, or prefix a
+command with `mise exec --`, so the pinned tools are on `PATH`. `just` alone
+lists every recipe, with what it does. Rust itself comes from rustup. Every
+tool the hooks and the recipes run is pinned in `mise.toml`, whose downloads
+`mise.lock` checksums, so the hooks run the same releases here as in CI:
+`just setup` installs them and then installs the hooks. `just check` runs
+formatting, Clippy with warnings denied on every target, the documentation and
+the tests, in the order continuous integration runs them; the shared workflow
+adds the coverage floor, the advisory, spelling and licence checks, and the
+macOS and Windows legs that need its runners.
 
 ## 📚 Documentation
 
